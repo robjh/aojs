@@ -12,7 +12,7 @@
 		module_factory[identifier][1](ao);
 		ao.modules.push(identifier);
 	});
-	
+
 	window.ao_get = function(argv) {
 		argv = argv || {};
 		var ao = {
@@ -57,7 +57,7 @@ ao_module('util', [], function(ao) {
 	ao.jQuery_has = (typeof(jQuery) !== 'undefined');
 	ao.element_raw = (function(node) {
 		return (ao.jQuery_has && node instanceof jQuery) ? node.get(0)
-			                                             : node;
+		                                                 : node;
 	});
 
 	// Find the endieness of the system, so the server can send us
@@ -204,7 +204,7 @@ ao_module('terminal', ['util'], function(ao) {
 		proc.term    = term;
 		proc.yeild   = false;
 		proc.status  = proc_status.UNKNOWN;
-		
+
 		proc._run = (function(status) {
 			proc.status = status;
 			var event_name = proc_status_event_name(status);
@@ -220,7 +220,7 @@ ao_module('terminal', ['util'], function(ao) {
 		argv     = argv || {};
 		p        = p    || {};
 		var self = {};
-		
+
 		p.container = p.container || ao.element_raw(argv.container);
 		p.backlog   = p.backlog   || ao.element_raw(argv.backlog);
 		p.input     = p.input     || ao.element_raw(argv.input);
@@ -237,7 +237,7 @@ ao_module('terminal', ['util'], function(ao) {
 			return p.input_buffer.splice(0, 1)[0];
 		});
 		istream.eof = false;
-		
+
 		var ostream = p.ostream || argv.ostream || (function(input) {
 			if (typeof(input) == 'object') {
 				if (input === argv.process.ostream.nl) {
@@ -255,7 +255,7 @@ ao_module('terminal', ['util'], function(ao) {
 			window.scrollTo(0, document.body.scrollHeight);
 		});
 		ostream.nl = {};
-		
+
 		processify(argv.process, istream, ostream, self);
 
 
@@ -272,6 +272,9 @@ ao_module('terminal', ['util'], function(ao) {
 
 		self.focus = (function() {
 			p.input.focus();
+		});
+		
+		self.clear = (function() {
 		});
 		
 		self.set_input_contents = (function(input) {}); // do nothing
@@ -293,10 +296,10 @@ ao_module('terminal', ['util'], function(ao) {
 			className: 'ao_input',
 			contentEditable: true
 		});
-		
+
 		var dont_run = p.dont_run;
 		p.dont_run = true;
-		
+
 		var self = terminal_base(argv, p);
 
 		var ctrl_down  = false;
@@ -330,8 +333,12 @@ ao_module('terminal', ['util'], function(ao) {
 			caret_to_end(p.input);
 		});
 
+		self.clear = (function() {
+			p.backlog.innerHTML = "";
+		});
+
 		// events
-		
+
 		p.container.onmousedown = (function() {
 			p.mouse_drag = false;
 		});
@@ -345,7 +352,7 @@ ao_module('terminal', ['util'], function(ao) {
 				caret_to_end(p.input);
 			}
 		});
-		
+
 		p.input.onkeydown = (function(event) {
 			switch (event.keyCode) {
 				case 13: // enter
@@ -384,7 +391,7 @@ ao_module('terminal', ['util'], function(ao) {
 			}
 			return true;
 		});
-		
+
 		p.input.onkeyup = (function(event) {
 			switch (event.keyCode) {
 				case 16: // shift
@@ -398,19 +405,19 @@ ao_module('terminal', ['util'], function(ao) {
 			}
 			return true;
 		});
-		
+
 		if (!dont_run) {
 			argv.process._run(proc_status.START);
 		}
-		
+
 		return self;
 	});
 
 	var command = (function(tokens) {
 		var self = {};
-		
+
 		self.tokens = tokens;
-		
+
 		return self;
 	});
 
@@ -422,21 +429,21 @@ ao_module('terminal', ['util'], function(ao) {
 		};
 		var length = input.length;
 		var output_current = '';
-		
+
 		self.end = (length == 0);
 		self.operator = false;
-		
+
 		self.next_token = (function() {
 			var output = '';
-			
+
 			pos.begin = pos.end;
 			while(pos.begin < length && whitespace(pos.begin)) ++pos.begin;
-			
+
 			if (pos.end >= length) {
 				self.end = true;
 				return '';
 			}
-			
+
 			if (operator(pos.begin) && input[pos.begin] != '\\') {
 				self.operator = true;
 				pos.end = pos.begin + 1;
@@ -444,14 +451,14 @@ ao_module('terminal', ['util'], function(ao) {
 			} else {
 				self.operator = false;
 				pos.end = pos.begin;
-			
+
 				while (true) {
 					while(pos.end < length && other(pos.end)) ++pos.end;
 					if (pos.end >= length) {
 						self.end = true;
 					}
 					output += input.substr(pos.begin, pos.end - pos.begin);
-					
+
 					if (input[pos.end] == '\\') {
 						output += input.substr(pos.end+1, 1);
 						pos.begin = pos.end += 2;
@@ -460,11 +467,11 @@ ao_module('terminal', ['util'], function(ao) {
 					}
 				}
 			}
-			
+
 			output_current = output;
 			return output;
 		});
-		
+
 		self.quoted_string = (function() {
 			var output = '';
 			pos.begin = pos.end;
@@ -475,7 +482,7 @@ ao_module('terminal', ['util'], function(ao) {
 					break;
 				}
 				output += input.substr(pos.begin, pos.end - pos.begin);
-				
+
 				if (input[pos.end] == '\\') {
 					if (pos.end+1 == length) {
 						// error case
@@ -493,11 +500,11 @@ ao_module('terminal', ['util'], function(ao) {
 			self.operator = false;
 			return output;
 		});
-		
+
 		self.ws_next = (function() {
 			return pos.end < input.lenght && whitespace(pos.end);
 		});
-		
+
 		var whitespace = (function(i) {
 			return /\s/.test(input[i]);
 		});
@@ -508,7 +515,7 @@ ao_module('terminal', ['util'], function(ao) {
 		var other = (function(i) {
 			return !whitespace(i) && !operator(i);
 		});
-		
+
 		return self;
 	});
 
@@ -529,7 +536,7 @@ ao_module('terminal', ['util'], function(ao) {
 		p.cmd_get = (function(identifier) {
 			return p.cmds[identifier];
 		});
-		
+
 		p.history = [];
 		p.history_p = 0;
 		var history_append = (function(input) {
@@ -537,14 +544,14 @@ ao_module('terminal', ['util'], function(ao) {
 				p.history.push(input_str);
 			p.history_p = p.history.length;
 		});
-		
+
 		p.env = p.env || {};
-		
+
 		p.processify = (function(proc, istream, ostream, term) {
 			processify(proc, istream, ostream, term);
 			proc.shell = self;
 		});
-		
+
 		p.command_tree = (function(input) {
 			var tokeniser = shell_tokeniser(input);
 			var token;
@@ -581,10 +588,8 @@ ao_module('terminal', ['util'], function(ao) {
 							// error case
 							throw new Error('unexpected operator "'+token+'"');
 					}
-					
 				}
 			}
-			
 			return working;
 		});
 
@@ -594,7 +599,7 @@ ao_module('terminal', ['util'], function(ao) {
 		});
 
 		var ctrl_handle = (function(c) {
-		
+
 			if (c == 'B' || c == 'A') {
 				if (c == 'A') {    // UP
 					--p.history_p;
@@ -602,7 +607,7 @@ ao_module('terminal', ['util'], function(ao) {
 				} else {           // DOWN
 					++p.history_p;
 				}
-		
+
 				if (p.history_p >= p.history.length) {
 					p.history_p = p.history.length;
 					this.term.set_input_contents('');
@@ -610,7 +615,7 @@ ao_module('terminal', ['util'], function(ao) {
 					this.term.set_input_contents(p.history[p.history_p]);
 				}
 			}
-		
+
 		//	console.log(c);
 		/*
 			switch (c) {
@@ -620,27 +625,34 @@ ao_module('terminal', ['util'], function(ao) {
 				case 'D': this.ostream(['LEFT', this.ostream.nl]); break;
 			}
 		//*/
-			
+
 			return true;
 		});
 
 		self.onstart = (function() {
 			this.yeild = true;
-			this.ostream(this.prompt());
+			if (argv.args) {
+				self.oninput(argv.args, true);
+			}
+			else {
+				this.ostream(this.prompt());
+			}
 		});
 
 		var input = [];
 		var input_str = '';
-		self.oninput = (function() {
-		
+		self.oninput = (function(args, quiet) {
+	
 			var tokens;
-			var input = this.istream();
+			var input = args || this.istream();
 			if (!input) this.ostream(this.ostream.nl);
 			else if (ctrl = ctrl_get(input)) {
 				if (ctrl_handle.bind(this)(ctrl)) return;
 			} else {
 				do {
-					this.ostream([input, this.ostream.nl]);
+					if (!quiet) {
+						this.ostream([input, this.ostream.nl]);
+					}
 					tokens = p.command_tree(input);
 					input_str += input;
 				} while (input = this.istream());
@@ -649,7 +661,7 @@ ao_module('terminal', ['util'], function(ao) {
 				history_append(input_str);
 				input_str = '';
 				// done
-			
+
 				input = (tokens);
 				var cmd = p.cmd_get(input[0]);
 				if (cmd) {
@@ -660,7 +672,7 @@ ao_module('terminal', ['util'], function(ao) {
 					this.ostream([input[0], ': command not found', this.ostream.nl]);
 				}
 			}
-			
+
 			if (this.istream.eof) {
 				this.yeild = false;
 			} else {
@@ -668,7 +680,6 @@ ao_module('terminal', ['util'], function(ao) {
 			}
 		});
 
-		
 
 		self.oninterupt = (function() {
 		});
