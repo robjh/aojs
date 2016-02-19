@@ -413,10 +413,22 @@ ao_module('terminal', ['util'], function(ao) {
 		return self;
 	});
 
-	var command = (function(tokens) {
+	var Command = (function(tokens) {
 		var self = {};
 
-		self.tokens = tokens;
+		self.tokens = [];
+
+		self.push = (function(token) {
+			self.tokens.push(token);
+		});
+
+		self.empty = (function() {
+			return self.tokens.length == 0;
+		});
+
+		self.exec = (function() {
+			return self.tokens[0];
+		});
 
 		return self;
 	});
@@ -509,8 +521,8 @@ ao_module('terminal', ['util'], function(ao) {
 			return /\s/.test(input[i]);
 		});
 		var operator = (function(i) {
-			// catches \ ' " $
-			return /[\\\'\"\$]/.test(input[i]);
+			// catches \ ' " $ ; |
+			return /[\\\'\"\$;\|]/.test(input[i]);
 		});
 		var other = (function(i) {
 			return !whitespace(i) && !operator(i);
@@ -523,9 +535,6 @@ ao_module('terminal', ['util'], function(ao) {
 		argv     = argv || {};
 		p        = p    || {};
 		var self = {};
-
-		p.operators = '\'\"';
-		p.operators_regex = new RegExp('['+p.operators+']');
 
 		p.prompt = p.prompt || argv.prompt || "$ ";
 		self.prompt = (function() {
@@ -555,25 +564,34 @@ ao_module('terminal', ['util'], function(ao) {
 		p.command_tree = (function(input) {
 			var tokeniser = shell_tokeniser(input);
 			var token;
-			var working = [];
-			
+			var commands = [];
+			var command = Command();
+
+			commands.push(command);
+
 			while (!tokeniser.end) {
 				token = tokeniser.next_token();
 				if (!tokeniser.operator && token != '') {
-					working.push(token);
+					command.push(token);
 				} else {
 					switch (token) {
 						case '\'':
 						case '\"': 
-							working.push(tokeniser.quoted_string());
+							command.push(tokeniser.quoted_string());
 							break;
 						case '$':
 							if (tokeniser.ws_next()) {
-								working.push('$');
+								command.push('$');
 							} else {
 								token = tokeniser.next_token();
 								if (typeof(p.env[token]) != 'undefined')
-									working.push(p.env[token]);
+									command.push(p.env[token]);
+							}
+							break;
+						case ';': // semicolon. sequentially run left and right things.
+							if (!command.empty()) {
+								command = Command();
+								commands.push(command);
 							}
 							break;
 						case '|': // pipe. split the current command tree into two
@@ -590,7 +608,8 @@ ao_module('terminal', ['util'], function(ao) {
 					}
 				}
 			}
-			return working;
+console.log(commands);
+			return commands;
 		});
 
 		var ctrl_get = (function(input) {
@@ -642,8 +661,8 @@ ao_module('terminal', ['util'], function(ao) {
 		var input = [];
 		var input_str = '';
 		self.oninput = (function(args, quiet) {
-	
-			var tokens;
+
+			var commands;
 			var input = args || this.istream();
 			if (!input) this.ostream(this.ostream.nl);
 			else if (ctrl = ctrl_get(input)) {
@@ -653,7 +672,7 @@ ao_module('terminal', ['util'], function(ao) {
 					if (!quiet) {
 						this.ostream([input, this.ostream.nl]);
 					}
-					tokens = p.command_tree(input);
+					commands = p.command_tree(input);
 					input_str += input;
 				} while (input = this.istream());
 				
@@ -662,6 +681,21 @@ ao_module('terminal', ['util'], function(ao) {
 				input_str = '';
 				// done
 
+
+
+				for (command of commands) {
+					if (command.empty()) continue;
+					var cmd = p.cmd_get(command.exec());
+					if (cmd) {
+						p.processify(cmd, this.istream, this.ostream, this.term);
+						cmd.argv = command.tokens;
+						cmd._run(proc_status.START);
+					} else {
+						this.ostream([command.exec(), ': command not found', this.ostream.nl]);
+					}
+				}
+
+/*
 				input = (tokens);
 				var cmd = p.cmd_get(input[0]);
 				if (cmd) {
@@ -671,6 +705,7 @@ ao_module('terminal', ['util'], function(ao) {
 				} else {
 					this.ostream([input[0], ': command not found', this.ostream.nl]);
 				}
+//*/
 			}
 
 			if (this.istream.eof) {
