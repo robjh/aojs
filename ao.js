@@ -147,11 +147,30 @@ ao_module('util', [], function(ao) {
 		}
 	});
 
+	var state_machine = (function(states) {
+		var self = function() {
+			while (states[self.state].bind(self)() == self.CONTINUE);
+		};
+		self.state = Object.keys(states)[0];
+		self.YIELD    = 0;
+		self.CONTINUE = 1;
+		self.yield = (function(state_name) {
+			if (state_name !== undefined) self.state = state_name;
+			return self.YIELD;
+		});
+		self.continue = (function(state_name) {
+			if (state_name !== undefined) self.state = state_name;
+			return self.CONTINUE;
+		});
+		return self;
+	});
+
 	ao.endian = endian;
 	ao.endianness = endianness;
 	ao.base64tobuffer = base64tobuffer;
 	ao.dom_node = dom_node;
 	ao.dom_apply = dom_apply;
+	ao.state_machine = state_machine;
 });
 ao_module('terminal', ['util'], function(ao) {
 
@@ -548,7 +567,7 @@ ao_module('terminal', ['util'], function(ao) {
 
 		p.history = [];
 		p.history_p = 0;
-		var history_append = (function(input) {
+		var history_append = (function(input_str) {
 			if (p.history[p.history.length - 1] != input_str)
 				p.history.push(input_str);
 			p.history_p = p.history.length;
@@ -649,40 +668,67 @@ console.log(commands);
 		});
 
 		self.onstart = (function() {
-			this.yeild = true;
-			if (argv.args) {
-				self.oninput(argv.args, true);
-			}
-			else {
-				this.ostream(this.prompt());
-			}
+			state.run();
 		});
 
-		var input = [];
-		var input_str = '';
 		self.oninput = (function(args, quiet) {
+			state.run();
+		});
 
-			var commands;
-			var input = args || this.istream();
-			if (!input) this.ostream(this.ostream.nl);
-			else if (ctrl = ctrl_get(input)) {
-				if (ctrl_handle.bind(this)(ctrl)) return;
-			} else {
-				do {
-					if (!quiet) {
-						this.ostream([input, this.ostream.nl]);
+		self.oninterupt = (function() {
+		});
+
+
+		var commands = [];
+		var state = {
+			run:       function() { while (state[state._step].bind(self)()); },
+			_step:     "setup",
+			_continue: function(new_state) { state._step = new_state; return 1; },
+			_yield:    function(new_state) { state._step = new_state; return 0; },
+
+			setup: function() {
+				this.yeild = true;
+				if (argv.args) {
+					commands = p.command_tree(argv.args);
+					return state._continue("run_cmds");
+				} else {
+					return state._continue("prompt_and_wait");
+				}
+			}, 
+			prompt_and_wait: function() {
+				if (this.istream.eof) {
+					this.yeild = false;
+					state._yeild("setup");
+				} else {
+					this.ostream(this.prompt());
+					state._yield("handle_input");
+				}
+			},
+			handle_input: function() {
+				var input = this.istream();
+				var input_str = '';
+				if (!input) {
+					this.ostream(this.ostream.nl);
+					return state._continue("prompt_and_wait");
+				} else if (ctrl = ctrl_get(input)) {
+					if (ctrl_handle.bind(this)(ctrl)) {
+						return state._continue("prompt_and_wait");
 					}
-					commands = p.command_tree(input);
-					input_str += input;
-				} while (input = this.istream());
-				
-				// manage the history
-				history_append(input_str);
-				input_str = '';
-				// done
-
-
-
+				} else {
+					do {
+						this.ostream([input, this.ostream.nl]);
+						commands = p.command_tree(input);
+						input_str += input;
+					} while (input = this.istream());
+					
+					// manage the history
+					history_append(input_str);
+					input_str = '';
+					// done
+					return state._continue("run_cmds");
+				}
+			},
+			run_cmds: function() {
 				for (command of commands) {
 					if (command.empty()) continue;
 					var cmd = p.cmd_get(command.exec());
@@ -694,30 +740,10 @@ console.log(commands);
 						this.ostream([command.exec(), ': command not found', this.ostream.nl]);
 					}
 				}
+				return state._continue("prompt_and_wait");
 
-/*
-				input = (tokens);
-				var cmd = p.cmd_get(input[0]);
-				if (cmd) {
-					p.processify(cmd, this.istream, this.ostream, this.term);
-					cmd.argv = input;
-					cmd._run(proc_status.START);
-				} else {
-					this.ostream([input[0], ': command not found', this.ostream.nl]);
-				}
-//*/
-			}
-
-			if (this.istream.eof) {
-				this.yeild = false;
-			} else {
-				this.ostream(this.prompt());
-			}
-		});
-
-
-		self.oninterupt = (function() {
-		});
+			},
+		};
 
 		return self;
 	});
