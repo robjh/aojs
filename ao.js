@@ -174,6 +174,8 @@ ao_module('util', [], function(ao) {
 });
 ao_module('terminal', ['util'], function(ao) {
 
+	var nl = {};
+
 	// placeCaretAtEnd - posted by Tim, stackoverflow.com/questions/4233265
 	var caret_to_end = (function(el) {
 		el.focus();
@@ -221,7 +223,7 @@ ao_module('terminal', ['util'], function(ao) {
 		proc.istream = istream;
 		proc.ostream = ostream;
 		proc.term    = term;
-		proc.yeild   = false;
+		proc.yield   = false;
 		proc.status  = proc_status.UNKNOWN;
 
 		proc._run = (function(status) {
@@ -257,7 +259,30 @@ ao_module('terminal', ['util'], function(ao) {
 		});
 		istream.eof = false;
 
+		self.prepare_output = (function(input, append_to) {
+			if (!append_to) {
+				append_to = document.createElement('div');
+			}
+			
+			if (typeof(input) == 'object') {
+				if (input === nl) {
+					append_to.appendChild(document.createElement('br'));
+				} else if (input instanceof Array) {
+					for (var i = 0,l = input.length ; i < l ; ++i) {
+						self.prepare_output(input[i], append_to);
+					}
+				} else {
+					append_to.appendChild(input);
+				}
+			} else if (typeof(input) == 'string') {
+				append_to.appendChild(document.createTextNode(input));
+			}
+			return append_to;
+		});
+
 		var ostream = p.ostream || argv.ostream || (function(input) {
+			self.prepare_output(input, p.backlog);
+			/*
 			if (typeof(input) == 'object') {
 				if (input === argv.process.ostream.nl) {
 					p.backlog.appendChild(document.createElement('br'));
@@ -271,9 +296,10 @@ ao_module('terminal', ['util'], function(ao) {
 			} else if (typeof(input) == 'string') {
 				p.backlog.appendChild(document.createTextNode(input));
 			}
+//*/
 			window.scrollTo(0, document.body.scrollHeight);
 		});
-		ostream.nl = {};
+		ostream.nl = nl;
 
 		processify(argv.process, istream, ostream, self);
 
@@ -436,6 +462,8 @@ ao_module('terminal', ['util'], function(ao) {
 		var self = {};
 
 		self.tokens = [];
+		self.ostream = null;
+		self.istream = null;
 
 		self.push = (function(token) {
 			self.tokens.push(token);
@@ -451,6 +479,30 @@ ao_module('terminal', ['util'], function(ao) {
 
 		return self;
 	});
+
+	/* a mechanism by which one command's output can be sent to another command's input */
+	var pipe = (function(argv, p) {
+		argv     = argv || {};
+		p        = p    || {};
+		var self = {};
+		
+		p.buffer = [];
+		
+		self.ostream = (function(input) {
+			p.buffer.push(input);
+		});
+		self.ostream.nl = nl;
+		self.istream = (function() {
+			if (p.buffer.length == 0) {
+				return "";
+			}
+			return p.buffer.splice(0, 1)[0];
+		});
+		self.istream.eof = false;
+		
+		return self;
+	});
+
 
 	var shell_tokeniser = (function(input) {
 		var self = {};
@@ -584,9 +636,11 @@ ao_module('terminal', ['util'], function(ao) {
 			var tokeniser = shell_tokeniser(input);
 			var token;
 			var commands = [];
+			var chain = [];
 			var command = Command();
 
-			commands.push(command);
+			chain.push(command);
+			commands.push(chain);
 
 			while (!tokeniser.end) {
 				token = tokeniser.next_token();
@@ -610,11 +664,16 @@ ao_module('terminal', ['util'], function(ao) {
 						case ';': // semicolon. sequentially run left and right things.
 							if (!command.empty()) {
 								command = Command();
-								commands.push(command);
+								chain = [];
+								chain.push(command)
+								commands.push(chain);
 							}
 							break;
-						case '|': // pipe. split the current command tree into two
-							
+						case '|': // pipe. split the current command tree into two, linking their IO streams.
+							if (!command.empty()) {
+								command = Command();
+								chain.push(command);
+							}
 							break;
 						case '':
 							// only valid after the end of a quoted string where no further input exists
@@ -627,7 +686,6 @@ ao_module('terminal', ['util'], function(ao) {
 					}
 				}
 			}
-console.log(commands);
 			return commands;
 		});
 
@@ -654,16 +712,6 @@ console.log(commands);
 				}
 			}
 
-		//	console.log(c);
-		/*
-			switch (c) {
-				case 'A': this.ostream(['UP', this.ostream.nl]); break;
-				case 'B': this.ostream(['DOWN', this.ostream.nl]); break;
-				case 'C': this.ostream(['RIGHT', this.ostream.nl]); break;
-				case 'D': this.ostream(['LEFT', this.ostream.nl]); break;
-			}
-		//*/
-
 			return true;
 		});
 
@@ -680,28 +728,29 @@ console.log(commands);
 
 
 		var commands = [];
+		var active_cmd = [];
 		var state = {
 			run:       function() { while (state[state._step].bind(self)()); },
 			_step:     "setup",
-			_continue: function(new_state) { state._step = new_state; return 1; },
-			_yield:    function(new_state) { state._step = new_state; return 0; },
+			_continue: function(new_state) { if (new_state) state._step = new_state; return 1; },
+			_yield:    function(new_state) { if (new_state) state._step = new_state; return 0; },
 
 			setup: function() {
-				this.yeild = true;
+				this.yield = true;
 				if (argv.args) {
 					commands = p.command_tree(argv.args);
-					return state._continue("run_cmds");
+					return state._continue("prepare_cmds");
 				} else {
 					return state._continue("prompt_and_wait");
 				}
 			}, 
 			prompt_and_wait: function() {
 				if (this.istream.eof) {
-					this.yeild = false;
-					state._yeild("setup");
+					this.yield = false;
+					return state._yield("setup");
 				} else {
 					this.ostream(this.prompt());
-					state._yield("handle_input");
+					return state._yield("handle_input");
 				}
 			},
 			handle_input: function() {
@@ -725,29 +774,80 @@ console.log(commands);
 					history_append(input_str);
 					input_str = '';
 					// done
-					return state._continue("run_cmds");
+					return state._continue("prepare_cmds");
 				}
 			},
-			run_cmds: function() {
-				for (command of commands) {
+			prepare_cmds: function() {
+				if (commands.length == 0) {
+					return state._continue("prompt_and_wait");
+				}
+				var chain = commands.splice(0, 1)[0];
+				var pipe_old = null;
+				var pipe_new = null;
+				var length = chain.length
+				
+				active_cmd = [];
+
+				for (var i = 0 ; i < length ; ++i) {
+					var command = chain[i];
 					if (command.empty()) continue;
+					
 					var cmd = p.cmd_get(command.exec());
-					if (cmd) {
-						p.processify(cmd, this.istream, this.ostream, this.term);
-						cmd.argv = command.tokens;
-						cmd._run(proc_status.START);
-					} else {
+					if (!cmd) {
+						// ensure cmd is found here, rerun state if not.
 						this.ostream([command.exec(), ': command not found', this.ostream.nl]);
+						return state._continue();
+					}
+
+					if (i+1 < length) {
+						pipe_new = pipe();
+					} else {
+						pipe_new = null;
+					}
+
+					active_cmd.push(cmd);
+					p.processify(
+						cmd,
+						pipe_old ? pipe_old.istream : this.istream,
+						pipe_new ? pipe_new.ostream : this.ostream,
+						this.term
+					);
+					cmd.argv    = command.tokens;
+					cmd.started = false;
+
+					pipe_old = pipe_new;
+
+				}
+				
+				return state._continue("run_cmds");
+			},
+			run_cmds: function() {
+				var i = 0;
+				while (i < active_cmd.length) {
+					active_cmd[i]._run(active_cmd[i].started ? proc_status.INPUT : proc_status.START);
+
+					if (active_cmd[i].yield) {
+						++i;
+					} else {
+						if (active_cmd[i+1]) {
+							active_cmd[i+1].istream.eof = true;
+						}
+						active_cmd.splice(i, 1);
 					}
 				}
-				return state._continue("prompt_and_wait");
-
+				
+				if (active_cmd.length == 0) {
+					return state._continue("prepare_cmds");
+				} else {
+					return state._yield();
+				}
 			},
 		};
 
 		return self;
 	});
 
+	ao.nl            = nl;
 	ao.caret_to_end  = caret_to_end;
 	ao.proc_status   = proc_status;
 	ao.terminal_base = terminal_base;
