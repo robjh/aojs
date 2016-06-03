@@ -133,7 +133,9 @@ ao_module('util', [], function(ao) {
 
 	var dom_apply = (function(element, params) {
 		for (var i in params) {
-			if (typeof(element[i]) == 'function') {
+			if (i == "text") {
+				element.appendChild(document.createTextNode(params[i]));
+			} else if (typeof(element[i]) == 'function') {
 				if (params[i] instanceof Array) {
 					for (var j = 0, l = params[i].length ; j < l ; ++j) {
 						element[i](params[i][j]);
@@ -165,12 +167,110 @@ ao_module('util', [], function(ao) {
 		return self;
 	});
 
+	var cookies = (function(argv, p) {
+		argv     = argv || {};
+		p        = p    || {};
+		var self = {};
+		
+		self.reload = (function() {
+			self.store = {};
+			p.expires = {};
+			for (var cookie in cookies._store) {
+				self.store[cookie] = cookies._store[cookie];
+			}
+			self.length = cookies._length; 
+		});
+		self.reload();
+		
+		self.set = (function(name, value, expires) {
+			if (expires) {
+				if (typeof expires == "string") {
+					var data = expires.match(/^\+?([1-9][0-9]*(?:\.[0-9]+)?)([smhdwy])$/);
+					if (!data) {
+						console.error("didnt understand \"" + expires + "\" in expires parameter. Not setting cookie.");
+						return false;
+					}
+					expires = data[1];
+					switch (data[2]) {
+						case 'y': expires *= 52;
+						case 'w': expires *= 7;
+						case 'd': expires *= 24;
+						case 'h': expires *= 60;
+						case 'm': expires *= 60;
+						case 's': expires *= 1000;
+					}
+				}
+				p.expires[name] = expires;
+			}
+			self.store[name] = value;
+			++self.length;
+			return true;
+		});
+		
+		self.validate = (function(value) {
+			return /^[A-Za-z0-9 !#$%&'()*+-./:<=>?@\[\]^_`{|}~]+$/.test(value);
+		});
+		
+		self.remove = (function(name) {
+			delete self.store[name];
+			--self.length;
+			if (cookies._store[name]) {
+				document.cookie = name + "=; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
+				delete cookies._store[name];
+				--cookies._length;
+			}
+		});
+		
+		self.remove_all = (function() {
+			for (var cookie in self.store) {
+				self.remove(cookie);
+			}
+		});
+		
+		self.commit = (function() {
+			for (var cookie in self.store) {
+				if (
+					!cookies._store[cookie]                      ||
+					cookies._store[cookie] != self.store[cookie] ||
+					p.expires[cookie]
+				) {
+					var expires = "";
+					if (p.expires[cookie]) {
+						var d = new Date();
+						d.setTime(d.getTime() + p.expires[cookie] * 1000);
+						expires = "; expires=" + d.toUTCString();
+					}
+					document.cookie = cookie + "=" + self.store[cookie] + expires;
+					cookies._store[cookie] = self.store[cookie];
+				}
+			}
+			cookies._length = self.length;
+		});
+		
+		return self;
+	});
+	cookies._store = {};
+	cookies._length = 0;
+	(function() { // initialise the global cookies array.
+		var all_cookies = document.cookie.trim().split(';');
+		if (all_cookies[0] == "") return;
+		cookies._length = all_cookies.length;
+		for (var i = 0 ; i < cookies._length ; ++i) {
+			var cookie = all_cookies[i].trim();
+			var eq_pos = cookie.indexOf('=');
+			cookies._store[cookie.substring(0, eq_pos)] = cookie.substring(eq_pos + 1, cookie.length);
+		}
+	}());
+
+
+
 	ao.endian = endian;
 	ao.endianness = endianness;
 	ao.base64tobuffer = base64tobuffer;
 	ao.dom_node = dom_node;
 	ao.dom_apply = dom_apply;
 	ao.state_machine = state_machine;
+	ao.cookies = cookies;
 });
 ao_module('terminal', ['util'], function(ao) {
 
