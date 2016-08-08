@@ -149,21 +149,36 @@ ao_module('util', [], function(ao) {
 		}
 	});
 
-	var state_machine = (function(states) {
-		var self = function() {
-			while (states[self.state].bind(self)() == self.CONTINUE);
-		};
-		self.state = Object.keys(states)[0];
-		self.YIELD    = 0;
-		self.CONTINUE = 1;
+	var state_machine = (function(argv, p) {
+		argv     = argv || {};
+		p        = p    || {};
+
+		if (argv.bind) {
+			var self = function() {
+				while (argv.states[p.state].bind(argv.bind)(self) == p.CONTINUE);
+			};
+		} else {
+			var self = function() {
+				while (argv.states[p.state](self) == p.CONTINUE);
+			};
+		}
+		p.state = p.state || Object.keys(argv.states)[0];
+		p.YIELD    = 0;
+		p.CONTINUE = 1;
+
 		self.yield = (function(state_name) {
-			if (state_name !== undefined) self.state = state_name;
-			return self.YIELD;
+			if (state_name !== undefined) p.state = state_name;
+			return p.YIELD;
 		});
 		self.continue = (function(state_name) {
-			if (state_name !== undefined) self.state = state_name;
-			return self.CONTINUE;
+			if (state_name !== undefined) p.state = state_name;
+			return p.CONTINUE;
 		});
+		self.fnc = {
+			yield:     self.yield,
+			continue:  self.continue
+		};
+
 		return self;
 	});
 
@@ -262,7 +277,29 @@ ao_module('util', [], function(ao) {
 		}
 	}());
 
+	var object_get_keys = (function(obj) {
+		if (Object.keys) return Object.keys(obj);
+		var keys = [];
+		for (var key in obj) {
+			keys.push(key);
+		}
+		return keys;
+	});
 
+	var array_contains = (function(haystack, needle) {
+		for (var i = 0, l = haystack.length ; i < l ; ++i) {
+			if (haystack[i] === needle) return true;
+		}
+		return false;
+	});
+	
+	var array_index_of = (function(haystack, needle) {
+		if (Array.prototype.indexOf) return haystack.indexOf(needle);
+		for (var i = 0, l = haystack.length ; i < l ; ++i) {
+			if (haystack[i] === needle) return i;
+		}
+		return -1;
+	});
 
 	ao.endian = endian;
 	ao.endianness = endianness;
@@ -271,6 +308,9 @@ ao_module('util', [], function(ao) {
 	ao.dom_apply = dom_apply;
 	ao.state_machine = state_machine;
 	ao.cookies = cookies;
+	ao.object_get_keys = object_get_keys;
+	ao.array_contains = array_contains;
+	ao.array_index_of = array_index_of;
 });
 ao_module('terminal', ['util'], function(ao) {
 
@@ -816,70 +856,72 @@ ao_module('terminal', ['util'], function(ao) {
 		});
 
 		self.onstart = (function() {
-			state.run();
+			lifecycle();
 		});
 
 		self.oninput = (function(args, quiet) {
-			state.run();
+			lifecycle();
 		});
 
 		self.oninterupt = (function() {
+			lifecycle();
 		});
 
+		var lifecycle = (function() {
+			var states = {};
+			var machine = ao.state_machine({states:states}, {state:"setup"});
+			
+			var commands = [];
+			var active_cmd = [];
 
-		var commands = [];
-		var active_cmd = [];
-		var state = {
-			run:       function() { while (state[state._step].bind(self)()); },
-			_step:     "setup",
-			_continue: function(new_state) { if (new_state) state._step = new_state; return 1; },
-			_yield:    function(new_state) { if (new_state) state._step = new_state; return 0; },
-
-			setup: function() {
-				this.yield = true;
+			states.setup = (function() {
+				self.yield = true;
 				if (argv.args) {
 					commands = p.command_tree(argv.args);
-					return state._continue("prepare_cmds");
+					return machine.continue("prepare_cmds");
 				} else {
-					return state._continue("prompt_and_wait");
+					return machine.continue("prompt_and_wait");
 				}
-			}, 
-			prompt_and_wait: function() {
-				if (this.istream.eof) {
-					this.yield = false;
-					return state._yield("setup");
+			});
+
+			states.prompt_and_wait = (function() {
+				if (self.istream.eof) {
+					self.yield = false;
+					return machine.yield("setup");
 				} else {
-					this.ostream(this.prompt());
-					return state._yield("handle_input");
+					self.ostream(self.prompt());
+					return machine.yield("handle_input");
 				}
-			},
-			handle_input: function() {
-				var input = this.istream();
+			});
+
+			states.handle_input = (function() {
+				var input = self.istream();
 				var input_str = '';
 				if (!input) {
-					this.ostream(this.ostream.nl);
-					return state._continue("prompt_and_wait");
+					self.ostream(self.ostream.nl);
+					return machine.continue("prompt_and_wait");
 				} else if (ctrl = ctrl_get(input)) {
-					if (ctrl_handle.bind(this)(ctrl)) {
-						return state._continue("prompt_and_wait");
+					if (ctrl_handle.bind(self)(ctrl)) {
+						return machine.continue("prompt_and_wait");
 					}
 				} else {
 					do {
-						this.ostream([input, this.ostream.nl]);
+						self.ostream([input, self.ostream.nl]);
 						commands = p.command_tree(input);
 						input_str += input;
-					} while (input = this.istream());
+					} while (input = self.istream());
 					
 					// manage the history
 					history_append(input_str);
 					input_str = '';
 					// done
-					return state._continue("prepare_cmds");
+					return machine.continue("prepare_cmds");
 				}
-			},
-			prepare_cmds: function() {
+			});
+
+			states.prepare_cmds = (function() {
 				if (commands.length == 0) {
-					return state._continue("prompt_and_wait");
+					return machine.continue("prompt_and_wait");
 				}
 				var chain = commands.splice(0, 1)[0];
 				var pipe_old = null;
@@ -895,8 +937,8 @@ ao_module('terminal', ['util'], function(ao) {
 					var cmd = p.cmd_get(command.exec());
 					if (!cmd) {
 						// ensure cmd is found here, rerun state if not.
-						this.ostream([command.exec(), ': command not found', this.ostream.nl]);
-						return state._continue();
+						self.ostream([command.exec(), ': command not found', self.ostream.nl]);
+						return machine.continue();
 					}
 
 					if (i+1 < length) {
@@ -908,9 +950,9 @@ ao_module('terminal', ['util'], function(ao) {
 					active_cmd.push(cmd);
 					p.processify(
 						cmd,
-						pipe_old ? pipe_old.istream : this.istream,
-						pipe_new ? pipe_new.ostream : this.ostream,
-						this.term
+						pipe_old ? pipe_old.istream : self.istream,
+						pipe_new ? pipe_new.ostream : self.ostream,
+						self.term
 					);
 					cmd.argv    = command.tokens;
 					cmd.started = false;
@@ -919,9 +961,10 @@ ao_module('terminal', ['util'], function(ao) {
 
 				}
 				
-				return state._continue("run_cmds");
-			},
-			run_cmds: function() {
+				return machine.continue("run_cmds");
+			});
+
+			states.run_cmds = (function() {
 				var i = 0;
 				while (i < active_cmd.length) {
 					active_cmd[i]._run(active_cmd[i].started ? proc_status.INPUT : proc_status.START);
@@ -937,12 +980,14 @@ ao_module('terminal', ['util'], function(ao) {
 				}
 				
 				if (active_cmd.length == 0) {
-					return state._continue("prepare_cmds");
+					return machine.continue("prepare_cmds");
 				} else {
-					return state._yield();
+					return machine.yield();
 				}
-			},
-		};
+			});
+			
+			return machine;
+		}() );
 
 		return self;
 	});
