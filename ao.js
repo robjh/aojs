@@ -135,6 +135,10 @@ ao_module('util', [], function(ao) {
 		for (var i in params) {
 			if (i == "text") {
 				element.appendChild(document.createTextNode(params[i]));
+			} else if (i == "data") {
+				for (var j in params[i]) {
+					element.dataset[j] = params[i][j];
+				}
 			} else if (typeof(element[i]) == 'function') {
 				if (params[i] instanceof Array) {
 					for (var j = 0, l = params[i].length ; j < l ; ++j) {
@@ -401,16 +405,18 @@ ao_module('terminal', ['util'], function(ao) {
 
 		self.prepare_output = (function(input, append_to) {
 			if (!append_to) {
-				append_to = document.createElement('div');
+				append_to = document.createDocumentFragment();
 			}
 			
 			if (typeof(input) == 'object') {
 				if (input === nl) {
 					append_to.appendChild(document.createElement('br'));
 				} else if (input instanceof Array) {
+					var frag = document.createDocumentFragment();
 					for (var i = 0,l = input.length ; i < l ; ++i) {
-						self.prepare_output(input[i], append_to);
+						self.prepare_output(input[i], frag);
 					}
+					append_to.appendChild(frag);
 				} else {
 					append_to.appendChild(input);
 				}
@@ -422,22 +428,7 @@ ao_module('terminal', ['util'], function(ao) {
 
 		var ostream = p.ostream || argv.ostream || (function(input) {
 			self.prepare_output(input, p.backlog);
-			/*
-			if (typeof(input) == 'object') {
-				if (input === argv.process.ostream.nl) {
-					p.backlog.appendChild(document.createElement('br'));
-				} else if (input instanceof Array) {
-					for (var i = 0,l = input.length ; i < l ; ++i) {
-						argv.process.ostream(input[i]);
-					}
-				} else {
-					p.backlog.appendChild(input);
-				}
-			} else if (typeof(input) == 'string') {
-				p.backlog.appendChild(document.createTextNode(input));
-			}
-//*/
-			window.scrollTo(0, document.body.scrollHeight);
+			p.container.scrollTo(0, p.container.scrollHeight);
 		});
 		ostream.nl = nl;
 
@@ -836,6 +827,7 @@ ao_module('terminal', ['util'], function(ao) {
 
 		var ctrl_handle = (function(c) {
 
+			var ret = false;
 			if (c == 'B' || c == 'A') {
 				if (c == 'A') {    // UP
 					--p.history_p;
@@ -852,7 +844,7 @@ ao_module('terminal', ['util'], function(ao) {
 				}
 			}
 
-			return true;
+			return ret;
 		});
 
 		self.onstart = (function() {
@@ -903,6 +895,8 @@ ao_module('terminal', ['util'], function(ao) {
 				} else if (ctrl = ctrl_get(input)) {
 					if (ctrl_handle.bind(self)(ctrl)) {
 						return machine.continue("prompt_and_wait");
+					} else {
+						return machine.yield();
 					}
 				} else {
 					do {
