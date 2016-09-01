@@ -428,7 +428,11 @@ ao_module('terminal', ['util'], function(ao) {
 
 		var ostream = p.ostream || argv.ostream || (function(input) {
 			self.prepare_output(input, p.backlog);
-			p.container.scrollTo(0, p.container.scrollHeight);
+			if (p.container.scrollTo) {
+				p.container.scrollTo(0, p.container.scrollHeight);
+			} else {
+				p.container.scrollTop = p.container.scrollHeight;
+			}
 		});
 		ostream.nl = nl;
 
