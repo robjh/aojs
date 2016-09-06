@@ -505,6 +505,10 @@ ao_module('terminal', ['util'], function(ao) {
 
 		if (argv.auto_focus) p.input.focus();
 
+		self.backlog_get = (function() {
+			return p.backlog;
+		});
+
 		self.set_input_contents = (function(input) {
 			for (var i = p.input.childNodes.length - 1; i >= 0 ; --i) {
 				p.input.removeChild(p.input.childNodes[i]);
