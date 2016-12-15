@@ -381,6 +381,68 @@ ao_module('terminal', ['util'], function(ao) {
 		});
 	});
 
+	var process = (function(argv, p) {
+		argv     = argv   || {};
+		p        = p      || {};
+		p.name   = p.name || "process";
+		p.fnc    = p.fnc  || {};
+		var self = {};
+
+		var started = false;
+		p.status = process.status.UNKNOWN;
+
+		if (typeof(argv.istream) !== 'function')
+			throw new Error('argv.istream must be a function.');
+		if (typeof(argv.ostream) !== 'function')
+			throw new Error('argv.ostream must be a function.');
+		if (typeof(argv.istream.eof) === 'undefined')
+			throw new Error('argv.istream.eof: undefined required member');
+		if (typeof(argv.ostream.nl) === 'undefined')
+			throw new Error('argv.ostream.nl: undefined required member');
+
+		p.argv = argv.argv || (p.name + " " + argv.args).split(/\w/);
+
+		self.run = (function(status) {
+			if (status == process.status.START && started) {
+				throw new Error('Call to START on already started process.');
+			}
+			p.status = status;
+			p.fnc[status].bind(self)();
+		});
+
+		return self;
+
+	});
+	process.status = {
+		UNKNOWN: 0,
+		START: 1,
+		INPUT: 2,
+		INTERUPT: 3
+	};
+	process.status_names = [
+		'', 'onstart', 'oninput', 'oninterupt'
+	];
+	process.status_get_name = (function(status) {
+		return process.status_names[status];
+	});
+
+	var process_simple = (function(argv, p) {
+		argv     = argv   || {};
+		p        = p      || {};
+		p.name   = p.name || "process_simple";
+		var self = process(argv, p);
+
+		var call_run = (function() {
+			p.fnc.run();
+		});
+
+		p.fnc[process.status.START] = call_run;
+		p.fnc[process.status.INPUT] = call_run;
+		p.fnc[process.status.INTERUPT] = call_run;
+
+		return self;
+	});
+
 	var terminal_base = (function(argv, p) {
 		argv     = argv || {};
 		p        = p    || {};
@@ -436,18 +498,28 @@ ao_module('terminal', ['util'], function(ao) {
 		});
 		ostream.nl = nl;
 
-		processify(argv.process, istream, ostream, self);
-
+//		processify(argv.process, istream, ostream, self);
+		p.process = argv.process({
+			istream: istream, 
+			ostream: ostream, 
+		});
 
 		// call this after taking some input.
+//		p.input_str = (function(str) {
+//			p.input_buffer.push(str);
+//			argv.process._run(proc_status.INPUT);
+//		});
 		p.input_str = (function(str) {
 			p.input_buffer.push(str);
-			argv.process._run(proc_status.INPUT);
+			p.process.run(proc_status.INPUT);
 		});
 
 		// call this to send an interupt signal
+//		self.interupt = (function() {
+//			argv.process._run(proc_status.INTERUPT);
+//		});
 		self.interupt = (function() {
-			argv.process._run(proc_status.INTERUPT);
+			p.process.run(proc_status.INTERUPT);
 		});
 
 		self.focus = (function() {
@@ -460,7 +532,8 @@ ao_module('terminal', ['util'], function(ao) {
 		self.set_input_contents = (function(input) {}); // do nothing
 		
 		if (!p.dont_run) {
-			argv.process._run(proc_status.START);
+//			argv.process._run(proc_status.START);
+			p.process.run(proc_status.START);
 		}
 		
 		return self;
@@ -591,7 +664,8 @@ ao_module('terminal', ['util'], function(ao) {
 		});
 
 		if (!dont_run) {
-			argv.process._run(proc_status.START);
+//			argv.process._run(proc_status.START);
+			p.process.run(proc_status.START);
 		}
 
 		return self;
@@ -698,7 +772,7 @@ ao_module('terminal', ['util'], function(ao) {
 			var output = '';
 			pos.begin = pos.end;
 			while (true) {
-				while (pos.end < length && !operator(pos.end)) ++pos.end;
+				while (pos.end < length && input[pos.end] != '"') ++pos.end;
 				if (pos.end >= length) {
 					self.end = true;
 					break;
@@ -744,7 +818,10 @@ ao_module('terminal', ['util'], function(ao) {
 	var shell = (function(argv, p) {
 		argv     = argv || {};
 		p        = p    || {};
-		var self = {};
+		var self = process_simple(argv, p);
+
+		var os = argv.ostream;
+		var is = argv.istream;
 
 		p.prompt = p.prompt || argv.prompt || "$ ";
 		self.prompt = (function() {
@@ -867,6 +944,7 @@ ao_module('terminal', ['util'], function(ao) {
 			lifecycle();
 		});
 
+
 		var lifecycle = (function() {
 			var states = {};
 			var machine = ao.state_machine({states:states}, {state:"setup"});
@@ -885,20 +963,20 @@ ao_module('terminal', ['util'], function(ao) {
 			});
 
 			states.prompt_and_wait = (function() {
-				if (self.istream.eof) {
+				if (is.eof) {
 					self.yield = false;
 					return machine.yield("setup");
 				} else {
-					self.ostream(self.prompt());
+					os(self.prompt());
 					return machine.yield("handle_input");
 				}
 			});
 
 			states.handle_input = (function() {
-				var input = self.istream();
+				var input = is();
 				var input_str = '';
 				if (!input) {
-					self.ostream(self.ostream.nl);
+					os(self.ostream.nl);
 					return machine.continue("prompt_and_wait");
 				} else if (ctrl = ctrl_get(input)) {
 					if (ctrl_handle.bind(self)(ctrl)) {
@@ -908,10 +986,10 @@ ao_module('terminal', ['util'], function(ao) {
 					}
 				} else {
 					do {
-						self.ostream([input, self.ostream.nl]);
+						os([input, os.nl]);
 						commands = p.command_tree(input);
 						input_str += input;
-					} while (input = self.istream());
+					} while (input = is());
 					
 					// manage the history
 					history_append(input_str);
@@ -939,7 +1017,7 @@ ao_module('terminal', ['util'], function(ao) {
 					var cmd = p.cmd_get(command.exec());
 					if (!cmd) {
 						// ensure cmd is found here, rerun state if not.
-						self.ostream([command.exec(), ': command not found', self.ostream.nl]);
+						os([command.exec(), ': command not found', os.nl]);
 						return machine.continue();
 					}
 
@@ -952,8 +1030,8 @@ ao_module('terminal', ['util'], function(ao) {
 					active_cmd.push(cmd);
 					p.processify(
 						cmd,
-						pipe_old ? pipe_old.istream : self.istream,
-						pipe_new ? pipe_new.ostream : self.ostream,
+						pipe_old ? pipe_old.istream : is,
+						pipe_new ? pipe_new.ostream : os,
 						self.term
 					);
 					cmd.argv    = command.tokens;
@@ -991,14 +1069,20 @@ ao_module('terminal', ['util'], function(ao) {
 			return machine;
 		}() );
 
+		p.fnc.run = (function() {
+			lifecycle();
+		});
+
 		return self;
 	});
 
-	ao.nl            = nl;
-	ao.caret_to_end  = caret_to_end;
-	ao.proc_status   = proc_status;
-	ao.terminal_base = terminal_base;
-	ao.terminal      = terminal;
-	ao.shell         = shell;
+	ao.nl             = nl;
+	ao.caret_to_end   = caret_to_end;
+	ao.proc_status    = proc_status;
+	ao.process        = process;
+	ao.process_simple = process_simple;
+	ao.terminal_base  = terminal_base;
+	ao.terminal       = terminal;
+	ao.shell          = shell;
 });
 
