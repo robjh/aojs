@@ -353,7 +353,7 @@ ao_module('terminal', ['util'], function(ao) {
 	var proc_status_event_name = (function(status) {
 		return proc_status_event_names[status];
 	});
-
+/*
 	var processify = (function(proc, istream, ostream, term) {
 		if (typeof(istream) !== 'function')
 			throw new Error('istream must be a function.');
@@ -380,7 +380,7 @@ ao_module('terminal', ['util'], function(ao) {
 			}
 		});
 	});
-
+//*/
 	var process = (function(argv, p) {
 		argv     = argv   || {};
 		p        = p      || {};
@@ -400,7 +400,10 @@ ao_module('terminal', ['util'], function(ao) {
 		if (typeof(argv.ostream.nl) === 'undefined')
 			throw new Error('argv.ostream.nl: undefined required member');
 
-		p.argv = argv.argv || (p.name + " " + argv.args).split(/\w/);
+		p.argv = argv.argv || (
+			argv.args ? (p.name + " " + argv.args).split(/\w/)
+			          : p.name
+		);
 
 		self.run = (function(status) {
 			if (status == process.status.START && started) {
@@ -498,26 +501,23 @@ ao_module('terminal', ['util'], function(ao) {
 		});
 		ostream.nl = nl;
 
-//		processify(argv.process, istream, ostream, self);
-		p.process = argv.process({
-			istream: istream, 
-			ostream: ostream, 
+		p.populate_process_argv = (function(argv) {
+			argv = argv || {};
+			argv.istream = argv.istream || istream;
+			argv.ostream = argv.ostream || ostream;
+			argv.term    = argv.term    || self;
+			return argv;
 		});
 
+		p.process = argv.process(p.populate_process_argv());
+
 		// call this after taking some input.
-//		p.input_str = (function(str) {
-//			p.input_buffer.push(str);
-//			argv.process._run(proc_status.INPUT);
-//		});
 		p.input_str = (function(str) {
 			p.input_buffer.push(str);
 			p.process.run(proc_status.INPUT);
 		});
 
 		// call this to send an interupt signal
-//		self.interupt = (function() {
-//			argv.process._run(proc_status.INTERUPT);
-//		});
 		self.interupt = (function() {
 			p.process.run(proc_status.INTERUPT);
 		});
@@ -532,7 +532,6 @@ ao_module('terminal', ['util'], function(ao) {
 		self.set_input_contents = (function(input) {}); // do nothing
 		
 		if (!p.dont_run) {
-//			argv.process._run(proc_status.START);
 			p.process.run(proc_status.START);
 		}
 		
@@ -664,7 +663,6 @@ ao_module('terminal', ['util'], function(ao) {
 		});
 
 		if (!dont_run) {
-//			argv.process._run(proc_status.START);
 			p.process.run(proc_status.START);
 		}
 
@@ -843,9 +841,10 @@ ao_module('terminal', ['util'], function(ao) {
 
 		p.env = p.env || {};
 
-		p.processify = (function(proc, istream, ostream, term) {
-			processify(proc, istream, ostream, term);
-			proc.shell = self;
+		p.populate_process_argv = (function(new_argv) {
+			new_argv   = argv.term.populate_process_argv(new_argv);
+			new_argv.shell = new_argv.shell || self;
+			return new_argv;
 		});
 
 		p.command_tree = (function(input) {
@@ -1027,15 +1026,12 @@ ao_module('terminal', ['util'], function(ao) {
 						pipe_new = null;
 					}
 
-					active_cmd.push(cmd);
-					p.processify(
-						cmd,
-						pipe_old ? pipe_old.istream : is,
-						pipe_new ? pipe_new.ostream : os,
-						self.term
-					);
-					cmd.argv    = command.tokens;
-					cmd.started = false;
+					var process = cmd(p.populate_process_argv({
+						istream: pipe_old ? pipe_old.istream : is,
+						ostream: pipe_new ? pipe_new.ostream : os,
+						argv: command.tokens
+					}));
+					active_cmd.push(process);
 
 					pipe_old = pipe_new;
 
@@ -1047,7 +1043,7 @@ ao_module('terminal', ['util'], function(ao) {
 			states.run_cmds = (function() {
 				var i = 0;
 				while (i < active_cmd.length) {
-					active_cmd[i]._run(active_cmd[i].started ? proc_status.INPUT : proc_status.START);
+					active_cmd[i].run(active_cmd[i].started ? proc_status.INPUT : proc_status.START);
 
 					if (active_cmd[i].yield) {
 						++i;
