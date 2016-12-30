@@ -305,6 +305,16 @@ ao_module('util', [], function(ao) {
 		return -1;
 	});
 
+	var object_merge = (function(obj1, obj2) {
+		if (obj2) {
+			var keys = Object.keys(obj2);
+			for (var i = 0, l = keys.length ; i < l ; ++i) {
+				obj1[i] = obj2[i];
+			}
+		}
+		return obj1;
+	});
+
 	ao.endian = endian;
 	ao.endianness = endianness;
 	ao.base64tobuffer = base64tobuffer;
@@ -315,6 +325,7 @@ ao_module('util', [], function(ao) {
 	ao.object_get_keys = object_get_keys;
 	ao.array_contains = array_contains;
 	ao.array_index_of = array_index_of;
+	ao.object_merge = object_merge;
 });
 ao_module('terminal', ['util'], function(ao) {
 
@@ -353,34 +364,7 @@ ao_module('terminal', ['util'], function(ao) {
 	var proc_status_event_name = (function(status) {
 		return proc_status_event_names[status];
 	});
-/*
-	var processify = (function(proc, istream, ostream, term) {
-		if (typeof(istream) !== 'function')
-			throw new Error('istream must be a function.');
-		if (typeof(ostream) !== 'function')
-			throw new Error('ostream must be a function.');
-		if (typeof(istream.eof) === 'undefined')
-			throw new Error('istream.eof: undefined required member');
-		if (typeof(ostream.nl) === 'undefined')
-			throw new Error('ostream.nl: undefined required member');
 
-		proc.istream = istream;
-		proc.ostream = ostream;
-		proc.term    = term;
-		proc.yield   = false;
-		proc.status  = proc_status.UNKNOWN;
-
-		proc._run = (function(status) {
-			proc.status = status;
-			var event_name = proc_status_event_name(status);
-			if (typeof(proc[event_name]) == 'function') {
-				proc[event_name].bind(proc)();
-			} else if (typeof(proc) == 'function') {
-				proc.bind(proc)();
-			}
-		});
-	});
-//*/
 	var process = (function(argv, p) {
 		argv     = argv   || {};
 		p        = p      || {};
@@ -388,7 +372,8 @@ ao_module('terminal', ['util'], function(ao) {
 		p.fnc    = p.fnc  || {};
 		var self = {};
 
-		var started = false;
+		self.started = false;
+		self.yield = false;
 		p.status = process.status.UNKNOWN;
 
 		if (typeof(argv.istream) !== 'function')
@@ -405,8 +390,11 @@ ao_module('terminal', ['util'], function(ao) {
 			          : p.name
 		);
 
+		self.istream = argv.istream;
+		self.ostream = argv.ostream;
+
 		self.run = (function(status) {
-			if (status == process.status.START && started) {
+			if (status == process.status.START && self.started) {
 				throw new Error('Call to START on already started process.');
 			}
 			p.status = status;
@@ -442,6 +430,56 @@ ao_module('terminal', ['util'], function(ao) {
 		p.fnc[process.status.START] = call_run;
 		p.fnc[process.status.INPUT] = call_run;
 		p.fnc[process.status.INTERUPT] = call_run;
+
+		return self;
+	});
+	process_simple.atomic = (function(name, main) {
+		return (function(argv, p) {
+			argv     = argv   || {};
+			p        = p      || {};
+			p.name   = p.name || name;
+			var self = ao.process_simple(argv, p);
+
+			p.fnc.run = main.bind(this, argv, p);
+			return self;
+		});
+	});
+
+	var process_sm = (function(argv, p) {
+		argv     = argv   || {};
+		p        = p      || {};
+		p.name   = p.name || "process_sm";
+		var self = process(argv, p);
+
+		var run_sm = function() {
+			while (argv.states[p.state](self) == p.CONTINUE);
+		};
+		p.state = p.state || Object.keys(argv.states)[0];
+		p.YIELD    = 0;
+		p.EXIT     = 1;
+		p.CONTINUE = 2;
+
+		p.yield = (function(state_name) {
+			if (state_name !== undefined) p.state = state_name;
+			self.yield = true;
+			return p.YIELD;
+		});
+		p.continue = (function(state_name) {
+			if (state_name !== undefined) p.state = state_name;
+			return p.CONTINUE;
+		});
+		p.exit = (function() {
+			self.yield = false;
+			return p.YIELD;
+		});
+		self.fnc = {
+			yield:     p.yield,
+			continue:  p.continue,
+			exit:      p.exit
+		};
+		p.fnc[process.status.START] = run_sm;
+		p.fnc[process.status.INPUT] = run_sm;
+		p.fnc[process.status.INTERUPT] = run_sm;
 
 		return self;
 	});
@@ -509,7 +547,7 @@ ao_module('terminal', ['util'], function(ao) {
 			return argv;
 		});
 
-		p.process = argv.process(p.populate_process_argv());
+		p.process = argv.process(p.populate_process_argv(argv.process_init_argv));
 
 		// call this after taking some input.
 		p.input_str = (function(str) {
@@ -842,8 +880,11 @@ ao_module('terminal', ['util'], function(ao) {
 		p.env = p.env || {};
 
 		p.populate_process_argv = (function(new_argv) {
-			new_argv   = argv.term.populate_process_argv(new_argv);
-			new_argv.shell = new_argv.shell || self;
+			new_argv = new_argv || {};
+			new_argv.istream = new_argv.istream || is;
+			new_argv.ostream = new_argv.ostream || os;
+			new_argv.term    = new_argv.term    || argv.term;
+			new_argv.shell   = new_argv.shell   || self;
 			return new_argv;
 		});
 
@@ -1077,6 +1118,7 @@ ao_module('terminal', ['util'], function(ao) {
 	ao.proc_status    = proc_status;
 	ao.process        = process;
 	ao.process_simple = process_simple;
+	ao.process_sm     = process_sm;
 	ao.terminal_base  = terminal_base;
 	ao.terminal       = terminal;
 	ao.shell          = shell;
