@@ -401,6 +401,30 @@ ao_module('terminal', ['util'], function(ao) {
 			p.fnc[status].bind(self)();
 		});
 
+		argv.switch_ctrl_rgx = argv.switch_ctrl_rgx || "-";
+		argv.switch_ctrl_str = argv.switch_ctrl_str || "--";
+		p.argv_act = (function(switches, regex, callback) {
+			if (typeof switches == "string") {
+				switches = [switches];
+			}
+			for (var i1 = 0, l1 = p.argv.length ; i1 < l1 ; ++i1) {
+				if (switches && p.argv[i1].startsWith(argv.switch_ctrl_str)) {
+					for (var i2 = 0, l2 = switches.length ; i2 < l2 ; ++i2) {
+						if (p.argv[i1] == (argv.switch_ctrl_str + switches[i2])) {
+							if (callback) callback(i1);
+							return true;
+						}
+					}
+				} else if (regex && p.argv[i1].startsWith(argv.switch_ctrl_rgx)) {
+					if (regex.test(p.argv[i1])) {
+						if (callback) callback(i1);
+						return true;
+					}
+				}
+			}
+			return false;
+		});
+
 		return self;
 
 	});
@@ -433,14 +457,14 @@ ao_module('terminal', ['util'], function(ao) {
 
 		return self;
 	});
-	process_simple.atomic = (function(name, main) {
+	process_simple.wrapper = (function(name, main) {
 		return (function(argv, p) {
 			argv     = argv   || {};
 			p        = p      || {};
 			p.name   = p.name || name;
 			var self = ao.process_simple(argv, p);
 
-			p.fnc.run = main.bind(this, argv, p);
+			p.fnc.run = main.bind(self, argv, p);
 			return self;
 		});
 	});
@@ -963,9 +987,9 @@ ao_module('terminal', ['util'], function(ao) {
 
 				if (p.history_p >= p.history.length) {
 					p.history_p = p.history.length;
-					this.term.set_input_contents('');
+					argv.term.set_input_contents('');
 				} else {
-					this.term.set_input_contents(p.history[p.history_p]);
+					argv.term.set_input_contents(p.history[p.history_p]);
 				}
 			}
 
