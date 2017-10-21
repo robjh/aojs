@@ -45,7 +45,12 @@
 		module_factory[identifier] = [requirements, factory];
 	};
 
-	window.onload = (function() {
+//	window.onload = (function() {
+//		for (var i = 0, l = when_ready.length ; i < l ; ++i) {
+//			when_ready[i]();
+//		}
+//	});
+	document.addEventListener("DOMContentLoaded", function(event) {
 		for (var i = 0, l = when_ready.length ; i < l ; ++i) {
 			when_ready[i]();
 		}
