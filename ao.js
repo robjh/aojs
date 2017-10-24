@@ -45,17 +45,12 @@
 		module_factory[identifier] = [requirements, factory];
 	};
 
-//	window.onload = (function() {
-//		for (var i = 0, l = when_ready.length ; i < l ; ++i) {
-//			when_ready[i]();
-//		}
-//	});
 	document.addEventListener("DOMContentLoaded", function(event) {
 		for (var i = 0, l = when_ready.length ; i < l ; ++i) {
 			when_ready[i]();
 		}
 	});
-	
+
 }());
 
 ao_module('util', [], function(ao) {
@@ -87,8 +82,8 @@ ao_module('util', [], function(ao) {
 		if (c[0] == 0xa1b2c3d4) return endian.BIG;
 		return endian.MIXED;
 	})();
-	
-	
+
+
 	// https://developer.mozilla.org/en-US/docs/Web/API/WindowBase64/Base64_encoding_and_decoding
 	//   #Appendix.3A_Decode_a_Base64_string_to_Uint8Array_or_ArrayBuffer
 	var base64tobuffer = (function(sBase64, nBlocksSize) {
@@ -107,7 +102,7 @@ ao_module('util', [], function(ao) {
 			     :
 			       0;
 		});
-        
+
 		var sB64Enc = sBase64.replace(/[^A-Za-z0-9\+\/]/g, "");
 		var nInLen  = sB64Enc.length;
 		var nOutLen = nBlocksSize ?
@@ -195,17 +190,17 @@ ao_module('util', [], function(ao) {
 		argv     = argv || {};
 		p        = p    || {};
 		var self = {};
-		
+
 		self.reload = (function() {
 			self.store = {};
 			p.expires = {};
 			for (var cookie in cookies._store) {
 				self.store[cookie] = cookies._store[cookie];
 			}
-			self.length = cookies._length; 
+			self.length = cookies._length;
 		});
 		self.reload();
-		
+
 		self.set = (function(name, value, expires) {
 			if (expires) {
 				if (typeof expires == "string") {
@@ -230,11 +225,11 @@ ao_module('util', [], function(ao) {
 			++self.length;
 			return true;
 		});
-		
+
 		self.validate = (function(value) {
 			return /^[A-Za-z0-9 !#$%&'()*+-./:<=>?@\[\]^_`{|}~]+$/.test(value);
 		});
-		
+
 		self.remove = (function(name) {
 			delete self.store[name];
 			--self.length;
@@ -244,13 +239,13 @@ ao_module('util', [], function(ao) {
 				--cookies._length;
 			}
 		});
-		
+
 		self.remove_all = (function() {
 			for (var cookie in self.store) {
 				self.remove(cookie);
 			}
 		});
-		
+
 		self.commit = (function() {
 			for (var cookie in self.store) {
 				if (
@@ -270,7 +265,7 @@ ao_module('util', [], function(ao) {
 			}
 			cookies._length = self.length;
 		});
-		
+
 		return self;
 	});
 	cookies._store = {};
@@ -301,7 +296,7 @@ ao_module('util', [], function(ao) {
 		}
 		return false;
 	});
-	
+
 	var array_index_of = (function(haystack, needle) {
 		if (Array.prototype.indexOf) return haystack.indexOf(needle);
 		for (var i = 0, l = haystack.length ; i < l ; ++i) {
@@ -539,7 +534,7 @@ ao_module('terminal', ['util'], function(ao) {
 			if (!append_to) {
 				append_to = document.createDocumentFragment();
 			}
-			
+
 			if (typeof(input) == 'object') {
 				if (input === nl) {
 					append_to.appendChild(document.createElement('br'));
@@ -592,16 +587,16 @@ ao_module('terminal', ['util'], function(ao) {
 		self.focus = (function() {
 			p.input.focus();
 		});
-		
+
 		self.clear = (function() {
 		});
-		
+
 		self.set_input_contents = (function(input) {}); // do nothing
-		
+
 		if (!p.dont_run) {
 			p.process.run(proc_status.START);
 		}
-		
+
 		return self;
 	});
 	var terminal = (function(argv, p) {
@@ -763,9 +758,9 @@ ao_module('terminal', ['util'], function(ao) {
 		argv     = argv || {};
 		p        = p    || {};
 		var self = {};
-		
+
 		p.buffer = [];
-		
+
 		self.ostream = (function(input) {
 			p.buffer.push(input);
 		});
@@ -777,7 +772,7 @@ ao_module('terminal', ['util'], function(ao) {
 			return p.buffer.splice(0, 1)[0];
 		});
 		self.istream.eof = false;
-		
+
 		return self;
 	});
 
@@ -934,7 +929,7 @@ ao_module('terminal', ['util'], function(ao) {
 				} else {
 					switch (token) {
 						case '\'':
-						case '\"': 
+						case '\"':
 							command.push(tokeniser.quoted_string());
 							break;
 						case '$':
@@ -1017,7 +1012,7 @@ ao_module('terminal', ['util'], function(ao) {
 		var lifecycle = (function() {
 			var states = {};
 			var machine = ao.state_machine({states:states}, {state:"setup"});
-			
+
 			var commands = [];
 			var active_cmd = [];
 
@@ -1059,7 +1054,7 @@ ao_module('terminal', ['util'], function(ao) {
 						commands = p.command_tree(input);
 						input_str += input;
 					} while (input = is());
-					
+
 					// manage the history
 					history_append(input_str);
 					input_str = '';
@@ -1076,13 +1071,13 @@ ao_module('terminal', ['util'], function(ao) {
 				var pipe_old = null;
 				var pipe_new = null;
 				var length = chain.length
-				
+
 				active_cmd = [];
 
 				for (var i = 0 ; i < length ; ++i) {
 					var command = chain[i];
 					if (command.empty()) continue;
-					
+
 					var cmd = p.cmd_get(command.exec());
 					if (!cmd) {
 						// ensure cmd is found here, rerun state if not.
@@ -1106,7 +1101,7 @@ ao_module('terminal', ['util'], function(ao) {
 					pipe_old = pipe_new;
 
 				}
-				
+
 				return machine.continue("run_cmds");
 			});
 
@@ -1124,14 +1119,14 @@ ao_module('terminal', ['util'], function(ao) {
 						active_cmd.splice(i, 1);
 					}
 				}
-				
+
 				if (active_cmd.length == 0) {
 					return machine.continue("prepare_cmds");
 				} else {
 					return machine.yield();
 				}
 			});
-			
+
 			return machine;
 		}() );
 
