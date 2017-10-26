@@ -1,6 +1,11 @@
 (function () {
 
-	var when_ready = [];
+	var _event_handlers = {
+		"DOMContentLoaded":  [],
+		"beforeunload":      [],
+		"onkeydown":         [],
+		"onkeyup":           []
+	};
 
 	var module_factory = {};
 
@@ -27,7 +32,19 @@
 			return ao.modules.indexOf(identifier) >= 0;
 		});
 		ao.ready = (function(callback) {
-			when_ready.push(callback);
+			_event_handlers.DOMContentLoaded.push(callback);
+			return ao;
+		});
+		ao.before_unload = (function(callback) {
+			_event_handlers.beforeunload.push(callback);
+			return ao;
+		});
+		ao.keydown = (function(callback) {
+			_event_handlers.onkeydown.push(callback);
+			return ao;
+		});
+		ao.keyup = (function(callback) {
+			_event_handlers.onkeydown.push(callback);
 			return ao;
 		});
 
@@ -45,11 +62,23 @@
 		module_factory[identifier] = [requirements, factory];
 	};
 
-	document.addEventListener("DOMContentLoaded", function(event) {
-		for (var i = 0, l = when_ready.length ; i < l ; ++i) {
-			when_ready[i]();
-		}
+	var generic_eventlistener = (function(event_name) {
+		return (function(event) {
+			var ret = true;
+			for (var i = 0, l = _event_handlers[event_name].length ; i < l ; ++i) {
+				var result = _event_handlers[event_name][i](event);
+				if (result !== undefined && result !== true) {
+					ret = false;
+				}
+			}
+			return ret;
+		});
 	});
+
+	document.addEventListener("DOMContentLoaded", generic_eventlistener("DOMContentLoaded") );
+	window.addEventListener(  "beforeunload",     generic_eventlistener("beforeunload")     );
+	document.addEventListener("keydown",          generic_eventlistener("onkeydown")        );
+	document.addEventListener("keyup",            generic_eventlistener("onkeyup")          );
 
 }());
 
@@ -672,6 +701,7 @@ ao_module('terminal', ['util'], function(ao) {
 		});
 
 		p.input.onkeydown = (function(event) {
+	console.log("local",event.keyCode);
 			switch (event.keyCode) {
 				case 13: // enter
 					p.input_str(p.input.textContent);
@@ -704,6 +734,13 @@ ao_module('terminal', ['util'], function(ao) {
 						return false;
 					}
 					break;
+				case 68: // 'd'
+					if (p.ctrl_down && p.shift_down) {
+						self.interupt();
+					event.preventDefault();
+						return false;
+					}
+					break;
 				default:
 					break;
 			}
@@ -718,11 +755,29 @@ ao_module('terminal', ['util'], function(ao) {
 				case 17: // ctrl
 					p.ctrl_down = false;
 					break;
+				case 68:
+					event.preventDefault();
+ if (event.stopPropagation)    event.stopPropagation();
+ if (event.cancelBubble!=null) event.cancelBubble = true;
+					return false;
 				default:
 					break;
 			}
 			return true;
 		});
+
+		// if the user tries to leave the page while the terminal has focus and the control key is held,
+		// its possible they just tried to delete a word (ctrl-w)
+		var onbeforeunload = (function(event) {
+			if (p.input == document.activeElement && p.ctrl_down) {
+				var confirmationMessage = "Use ctrl-alt-w to delete words.";
+				p.ctrl_down = false;
+
+				(event||window.event).returnValue = confirmationMessage;
+				return confirmationMessage;
+			}
+		});
+		window.addEventListener("beforeunload", onbeforeunload);
 
 		if (!dont_run) {
 			p.process.run(proc_status.START);
