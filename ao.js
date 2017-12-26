@@ -430,6 +430,22 @@ ao_module('terminal', ['util'], function(ao) {
 			p.fnc[status].bind(self)();
 		});
 
+		self.signal = (function(sig) {
+			var caught = false;
+			if (!(sig & process.SIG_CANTCATCH) && p.signal_handler[sig]) caught = p.signal_handler[sig];
+			if (!caught) {
+				if (sig & (process.SIG_TERMINATE | process.SIG_STOP) {
+					// tell the parent process/terminal to stop this process
+				}
+			}
+		});
+
+
+		p.signal_handlers = {};
+
+
+
+
 		argv.switch_ctrl_rgx = argv.switch_ctrl_rgx || "-";
 		argv.switch_ctrl_str = argv.switch_ctrl_str || "--";
 		p.argv_act = (function(switches, regex, callback) {
@@ -468,6 +484,130 @@ ao_module('terminal', ['util'], function(ao) {
 	];
 	process.status_get_name = (function(status) {
 		return process.status_names[status];
+	});
+
+
+	// fyi: These identifiers don't match their posix counterparts.
+	process.SIGNULL       = 0x00;
+	process.SIGHUP        = 0x11; // Hangup
+	process.SIGINT        = 0x12; // Interupt Signal
+	process.SIGPIPE       = 0x13; // Write on a pipe with no one to read it.
+	process.SIGPOLL       = 0x14; // Pollable event.
+	process.SIGPROF       = 0x15; // Profiling timer expired.
+	process.SIGUSR1       = 0x16; // User-defined signal 1.
+	process.SIGUSR2       = 0x17; // User-defined signal 2.
+	process.SIGVTALRM     = 0x18; // Virtual timer expired.
+	process.SIGKILL       = 0x99; // Kill, cannot be caught of ignored.
+	process.SIGALRM       = 0x1a; // Alarm clock
+	process.SIGTERM       = 0x1b; // Termination signal
+	process.SIGBUS        = 0x31; // Access to an undefined portion of a memory object.
+	process.SIGFPE        = 0x32; // Erroneous arithmetic operation.
+	process.SIGQUIT       = 0x33; // Terminal quit signal
+	process.SIGILL        = 0x34; // Illegal instruction.
+	process.SIGTRAP       = 0x35; // Trace/Breakpoint trap
+	process.SIGABRT       = 0x36; // Process abort signal
+	process.SIGSEGV       = 0x37; // Invalid memory reference.
+	process.SIGSYS        = 0x38; // Bad system call.
+	process.SIGXCPU       = 0x39; // CPU time limit exceeded.
+	process.SIGXFSZ       = 0x3a; // File size limit exceeded
+	process.SIGSTOP       = 0xc1; // Stop executing (cannot be caught or ignored).
+	process.SIGTSTP       = 0x42; // Terminal stop signal.
+	process.SIGTTIN       = 0x43; // Background process attempting read.
+	process.SIGTTOU       = 0x44; // Background process attempting write.
+	process.SIGCONT       = 0x01; // Continue executing, if stopped.
+	process.SIGCHLD       = 0x02; // Child process terminated, stopped, or continued.
+	process.SIGURG        = 0x03; // High bandwidth data is available at a socket.
+	process.SIGWINCH      = 0x04; // Terminal window size changed
+
+	// bitmasks
+	process.SIG_TERMINATE = 0x10;
+	process.SIG_COREDUMP  = 0x20;
+	process.SIG_STOP      = 0x40;
+	process.SIG_CANTCATCH = 0x80;
+	process.SIG_BITMASK   = 0xf0;
+
+	process.sig2str = (function(sig) {
+		switch (sig) {
+			case process.SIGNULL:       return "SIGNULL";
+			case process.SIGHUP:        return "SIGHUP";
+			case process.SIGINT:        return "SIGINT";
+			case process.SIGPIPE:       return "SIGPIPE";
+			case process.SIGPOLL:       return "SIGPOLL";
+			case process.SIGPROF:       return "SIGPROF";
+			case process.SIGUSR1:       return "SIGUSR1";
+			case process.SIGUSR2:       return "SIGUSR2";
+			case process.SIGVTALRM:     return "SIGVTALRM";
+			case process.SIGKILL:       return "SIGKILL";
+			case process.SIGALRM:       return "SIGALRM";
+			case process.SIGTERM:       return "SIGTERM";
+			case process.SIGBUS:        return "SIGBUS";
+			case process.SIGFPE:        return "SIGFPE";
+			case process.SIGQUIT:       return "SIGQUIT";
+			case process.SIGILL:        return "SIGILL";
+			case process.SIGTRAP:       return "SIGTRAP";
+			case process.SIGABRT:       return "SIGABRT";
+			case process.SIGSEGV:       return "SIGSEGV";
+			case process.SIGSYS:        return "SIGSYS";
+			case process.SIGXCPU:       return "SIGXCPU";
+			case process.SIGXFSZ:       return "SIGXFSZ";
+			case process.SIGSTOP:       return "SIGSTOP";
+			case process.SIGTSTP:       return "SIGTSTP";
+			case process.SIGTTIN:       return "SIGTTIN";
+			case process.SIGTTOU:       return "SIGTTOU";
+			case process.SIGCONT:       return "SIGCONT";
+			case process.SIGCHLD:       return "SIGCHLD";
+			case process.SIGURG:        return "SIGURG";
+			case process.SIGWINCH:      return "SIGWINCH";
+
+			case process.SIG_TERMINATE: return "SIG_TERMINATE";
+			case process.SIG_COREDUMP:  return "SIG_COREDUMP";
+			case process.SIG_STOP:      return "SIG_STOP";
+			case process.SIG_CANTCATCH: return "SIG_CANTCATCH";
+			case process.SIG_BITMASK:   return "SIG_BITMASK";
+
+			default: return "Unknown";
+		}
+	});
+	process.str2sig = (function(str) {
+		switch (sig) {
+			case "0x11": case "SIGHUP":        return process.SIGHUP;
+			case "0x12": case "SIGINT":        return process.SIGINT;
+			case "0x13": case "SIGPIPE":       return process.SIGPIPE;
+			case "0x14": case "SIGPOLL":       return process.SIGPOLL;
+			case "0x15": case "SIGPROF":       return process.SIGPROF;
+			case "0x16": case "SIGUSR1":       return process.SIGUSR1;
+			case "0x17": case "SIGUSR2":       return process.SIGUSR2;
+			case "0x18": case "SIGVTALRM":     return process.SIGVTALRM;
+			case "0x99": case "SIGKILL":       return process.SIGKILL;
+			case "0x1a": case "SIGALRM":       return process.SIGALRM;
+			case "0x1b": case "SIGTERM":       return process.SIGTERM;
+			case "0x31": case "SIGBUS":        return process.SIGBUS;
+			case "0x32": case "SIGFPE":        return process.SIGFPE;
+			case "0x33": case "SIGQUIT":       return process.SIGQUIT;
+			case "0x34": case "SIGILL":        return process.SIGILL;
+			case "0x35": case "SIGTRAP":       return process.SIGTRAP;
+			case "0x36": case "SIGABRT":       return process.SIGABRT;
+			case "0x37": case "SIGSEGV":       return process.SIGSEGV;
+			case "0x38": case "SIGSYS":        return process.SIGSYS;
+			case "0x39": case "SIGXCPU":       return process.SIGXCPU;
+			case "0x3a": case "SIGXFSZ":       return process.SIGXFSZ;
+			case "0xc1": case "SIGSTOP":       return process.SIGSTOP;
+			case "0x42": case "SIGTSTP":       return process.SIGTSTP;
+			case "0x43": case "SIGTTIN":       return process.SIGTTIN;
+			case "0x44": case "SIGTTOU":       return process.SIGTTOU;
+			case "0x01": case "SIGCONT":       return process.SIGCONT;
+			case "0x02": case "SIGCHLD":       return process.SIGCHLD;
+			case "0x03": case "SIGURG":        return process.SIGURG;
+			case "0x04": case "SIGWINCH":      return process.SIGWINCH;
+
+			case "0x10": case "SIG_TERMINATE": return process.SIG_TERMINATE;
+			case "0x20": case "SIG_COREDUMP":  return process.SIG_COREDUMP;
+			case "0x40": case "SIG_STOP":      return process.SIG_STOP;
+			case "0x80": case "SIG_CANTCATCH": return process.SIG_CANTCATCH;
+			case "0xf0": case "SIG_BITMASK":   return process.SIG_BITMASK;
+
+			default: return process.SIGNULL;
+		}
 	});
 
 	var process_simple = (function(argv, p) {
@@ -608,6 +748,21 @@ ao_module('terminal', ['util'], function(ao) {
 			p.process.run(proc_status.INPUT);
 		});
 
+		self.receive_ctrl_code = (function(code, alt, shift) {
+			alt   = (alt   === true);
+			shift = (shift === true);
+
+			switch (code) {
+			  case 3: // ^C
+				// send sigint
+				break;
+			}
+
+			return self.receive_ctrl_code.return_normal;
+		});
+		self.receive_ctrl_code.return_normal = 0;
+		self.receive_ctrl_code.return_default_action = 1;
+
 		// call this to send an interupt signal
 		self.interupt = (function() {
 			p.process.run(proc_status.INTERUPT);
@@ -684,6 +839,24 @@ ao_module('terminal', ['util'], function(ao) {
 			p.backlog.innerHTML = "";
 		});
 
+		// ^C should interupt when no text is selected, else it should copy as is normal gui behaviour.
+		// ^V isnt being used for anything interesting terminal wise, let it be paste.
+		var parent_receive_ctrl_code = self.receive_ctrl_code;
+		self.receive_ctrl_code = (function(code, alt, shift) {
+			alt   = (alt   === true);
+			shift = (shift === true);
+
+			if (code=3 && !alt && !shift) { // ^C
+				return self.receive_ctrl_code.return_default_action;
+			}
+			if (code=22) { // ^V
+				return self.receive_ctrl_code.return_default_action;
+			}
+
+			return parent_receive_ctrl_code(code, alt, shift);
+		});
+
+
 		// events
 
 		p.container.onmousedown = (function() {
@@ -701,8 +874,13 @@ ao_module('terminal', ['util'], function(ao) {
 		});
 
 		p.input.onkeydown = (function(event) {
-	console.log("local",event.keyCode);
-			switch (event.keyCode) {
+
+			var code = event.keyCode;
+			if (event.ctrlKey)
+				code &= 0x1f;
+//			console.log(event.keyCode, code, event);
+
+			switch (code) {
 				case 13: // enter
 					p.input_str(p.input.textContent);
 					p.input.textContent = '';
@@ -728,21 +906,35 @@ ao_module('terminal', ['util'], function(ao) {
 					p.input_str('\u001B[B');
 					return false;
 					break;
-				case 67: // 'c'
+/*
+				case 3: // 'c'
 					if (p.ctrl_down && p.shift_down) {
 						self.interupt();
-						return false;
 					}
 					break;
-				case 68: // 'd'
+				case 4: // 'd'
 					if (p.ctrl_down && p.shift_down) {
 						self.interupt();
-					event.preventDefault();
-						return false;
 					}
 					break;
+				case 22: // '^V'
+					return;
+					break;
+//*/
 				default:
 					break;
+			}
+
+			if (event.ctrlKey) {
+				var result = self.receive_ctrl_code(code, event.altKey, event.shiftKey);
+				if (result === self.receive_ctrl_code.return_normal) {
+					event.preventDefault();
+					return false;
+				} else if (result === self.receive_ctrl_code.return_default_action) {
+					return true;
+				} else {
+					throw new Error("unhandled control code.");
+				}
 			}
 			return true;
 		});
