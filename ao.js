@@ -188,16 +188,30 @@ ao_module('util', [], function(ao) {
 
 		if (argv.bind) {
 			var self = function() {
-				while (argv.states[p.state].bind(argv.bind)(self) == p.CONTINUE);
+				do {
+					self.current = argv.states[p.state].name;
+					self.next    = argv.states[p.state].next;
+				} while (argv.states[p.state].bind(argv.bind)(self, p.ctx) == p.CONTINUE);
 			};
 		} else {
 			var self = function() {
-				while (argv.states[p.state](self) == p.CONTINUE);
+				do {
+					self.current = argv.states[p.state].name;
+					self.next    = argv.states[p.state].next;
+				} while (argv.states[p.state](self, p.ctx) == p.CONTINUE);
 			};
 		}
-		p.state = p.state || Object.keys(argv.states)[0];
+		p.keys     = Object.keys(argv.states);
+		p.state    = p.state || p.keys[0];
+		p.ctx      = argv.ctx || {};
 		p.YIELD    = 0;
 		p.CONTINUE = 1;
+		self.first = p.state;
+
+		for (var i = 0, l = p.keys.length ; i < l ; ++i) {
+			argv.states[p.keys[i]].name = p.keys[i];
+			argv.states[p.keys[i]].next = p.keys[i+1%l];
+		}
 
 		self.yield = (function(state_name) {
 			if (state_name !== undefined) p.state = state_name;
@@ -209,7 +223,7 @@ ao_module('util', [], function(ao) {
 		});
 		self.fnc = {
 			yield:     self.yield,
-			continue:  self.continue
+			continue:  self.continue,
 		};
 
 		return self;
@@ -434,7 +448,7 @@ ao_module('terminal', ['util'], function(ao) {
 			var caught = false;
 			if (!(sig & process.SIG_CANTCATCH) && p.signal_handler[sig]) caught = p.signal_handler[sig];
 			if (!caught) {
-				if (sig & (process.SIG_TERMINATE | process.SIG_STOP) {
+				if (sig & (process.SIG_TERMINATE | process.SIG_STOP)) {
 					// tell the parent process/terminal to stop this process
 				}
 			}
