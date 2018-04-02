@@ -408,6 +408,22 @@ ao_module('terminal', ['util'], function(ao) {
 		return proc_status_event_names[status];
 	});
 
+	var process_manager = (function(argv, p) {
+		argv     = argv   || {};
+		p        = p      || {};
+		var self = {
+			processes: []
+		};
+
+		p.latest_pid = 0;
+
+		self.spawn = (function() {
+		});
+
+		return self;
+	});
+
+	var _process_pid_counter = 0;
 	var process = (function(argv, p) {
 		argv     = argv   || {};
 		p        = p      || {};
@@ -418,6 +434,11 @@ ao_module('terminal', ['util'], function(ao) {
 		self.started = false;
 		self.yield = false;
 		p.status = process.status.UNKNOWN;
+
+		var _pid = ++_process_pid_counter;
+		self.pid = (function() {
+			return _pid;
+		});
 
 		if (typeof(argv.istream) !== 'function')
 			throw new Error('argv.istream must be a function.');
@@ -444,21 +465,28 @@ ao_module('terminal', ['util'], function(ao) {
 			p.fnc[status].bind(self)();
 		});
 
-		self.signal = (function(sig) {
+		self.signal = (function(sig, argv) {
 			var caught = false;
-			if (!(sig & process.SIG_CANTCATCH) && p.signal_handler[sig]) caught = p.signal_handler[sig];
+			arvg = argv || {};
+			if (!(sig & process.SIG_CANTCATCH) && p.signal_handler[sig]) caught = p.signal_handler[sig](argv);
 			if (!caught) {
 				if (sig & (process.SIG_TERMINATE | process.SIG_STOP)) {
 					// tell the parent process/terminal to stop this process
+				//	(self.shell || self.term).
 				}
 			}
+			return caught;
 		});
 
 
-		p.signal_handlers = {};
+		p.signal_handler = {};
+		p.signal_handler[process.SIGINPUT] = (function() {
+			self.run(proc_status.INPUT);
+		});
 
-
-
+		self.receive_ctrl_code = (function(code, alt, shift) {
+			// processes get notified of this sort of thing.
+		});
 
 		argv.switch_ctrl_rgx = argv.switch_ctrl_rgx || "-";
 		argv.switch_ctrl_str = argv.switch_ctrl_str || "--";
@@ -482,6 +510,13 @@ ao_module('terminal', ['util'], function(ao) {
 				}
 			}
 			return false;
+		});
+
+		p.exit = (function() {
+			self.yield = false;
+			window.setTimeout(function() {
+				argv.term.process_exited(_pid)
+			}, 0);
 		});
 
 		return self;
@@ -532,6 +567,7 @@ ao_module('terminal', ['util'], function(ao) {
 	process.SIGCHLD       = 0x02; // Child process terminated, stopped, or continued.
 	process.SIGURG        = 0x03; // High bandwidth data is available at a socket.
 	process.SIGWINCH      = 0x04; // Terminal window size changed
+	process.SIGINPUT      = 0x06; // Data available on istream
 
 	// bitmasks
 	process.SIG_TERMINATE = 0x10;
@@ -539,6 +575,11 @@ ao_module('terminal', ['util'], function(ao) {
 	process.SIG_STOP      = 0x40;
 	process.SIG_CANTCATCH = 0x80;
 	process.SIG_BITMASK   = 0xf0;
+
+	process.SIGCHLD_UNKNOWN = 0;
+	process.SIGCHLD_CONT    = 1;
+	process.SIGCHLD_STOP    = 2;
+	process.SIGCHLD_TERM    = 3;
 
 	process.sig2str = (function(sig) {
 		switch (sig) {
@@ -572,6 +613,7 @@ ao_module('terminal', ['util'], function(ao) {
 			case process.SIGCHLD:       return "SIGCHLD";
 			case process.SIGURG:        return "SIGURG";
 			case process.SIGWINCH:      return "SIGWINCH";
+			case process.SIGINPUT:      return "SIGINPUT";
 
 			case process.SIG_TERMINATE: return "SIG_TERMINATE";
 			case process.SIG_COREDUMP:  return "SIG_COREDUMP";
@@ -613,6 +655,7 @@ ao_module('terminal', ['util'], function(ao) {
 			case "0x02": case "SIGCHLD":       return process.SIGCHLD;
 			case "0x03": case "SIGURG":        return process.SIGURG;
 			case "0x04": case "SIGWINCH":      return process.SIGWINCH;
+			case "0x06": case "SIGINPUT":      return process.SIGINPUT;
 
 			case "0x10": case "SIG_TERMINATE": return process.SIG_TERMINATE;
 			case "0x20": case "SIG_COREDUMP":  return process.SIG_COREDUMP;
@@ -705,13 +748,13 @@ ao_module('terminal', ['util'], function(ao) {
 		}
 
 		p.input_buffer = [];
-		var istream = p.istream || argv.istream || (function() {
+		p.istream = p.istream || argv.istream || (function() {
 			if (p.input_buffer.length == 0) {
 				return "";
 			}
 			return p.input_buffer.splice(0, 1)[0];
 		});
-		istream.eof = false;
+		p.istream.eof = false;
 
 		self.prepare_output = (function(input, append_to) {
 			if (!append_to) {
@@ -736,7 +779,7 @@ ao_module('terminal', ['util'], function(ao) {
 			return append_to;
 		});
 
-		var ostream = p.ostream || argv.ostream || (function(input) {
+		p.ostream = p.ostream || argv.ostream || (function(input) {
 			self.prepare_output(input, p.backlog);
 			if (p.container.scrollTo) {
 				p.container.scrollTo(0, p.container.scrollHeight);
@@ -744,12 +787,12 @@ ao_module('terminal', ['util'], function(ao) {
 				p.container.scrollTop = p.container.scrollHeight;
 			}
 		});
-		ostream.nl = nl;
+		p.ostream.nl = nl;
 
 		p.populate_process_argv = (function(argv) {
 			argv = argv || {};
-			argv.istream = argv.istream || istream;
-			argv.ostream = argv.ostream || ostream;
+			argv.istream = p.istream;
+			argv.ostream = p.ostream;
 			argv.term    = argv.term    || self;
 			return argv;
 		});
@@ -759,18 +802,18 @@ ao_module('terminal', ['util'], function(ao) {
 		// call this after taking some input.
 		p.input_str = (function(str) {
 			p.input_buffer.push(str);
-			p.process.run(proc_status.INPUT);
+			p.process.signal(process.SIGINPUT);
 		});
 
 		self.receive_ctrl_code = (function(code, alt, shift) {
 			alt   = (alt   === true);
 			shift = (shift === true);
 
-			switch (code) {
-			  case 3: // ^C
-				// send sigint
-				break;
+			if (code == 3) { // ^C
+				p.process.signal(process.SIGINT);
 			}
+
+			p.process.receive_ctrl_code(code, alt, shift);
 
 			return self.receive_ctrl_code.return_normal;
 		});
@@ -780,6 +823,7 @@ ao_module('terminal', ['util'], function(ao) {
 		// call this to send an interupt signal
 		self.interupt = (function() {
 			p.process.run(proc_status.INTERUPT);
+			if (!p.process.yield) self.on_process_complete();
 		});
 
 		self.focus = (function() {
@@ -793,7 +837,22 @@ ao_module('terminal', ['util'], function(ao) {
 
 		if (!p.dont_run) {
 			p.process.run(proc_status.START);
+			if (!p.process.yield) self.on_process_complete();
 		}
+
+		self.on_process_complete = (function() {
+			p.ostream([p.ostream.nl, "Process Complete."]);
+			p.process = null;
+		});
+
+		// called by the process' exit function. Triggers SIGCHLD to be sent to the child process.
+		self.process_exited = (function(pid) {
+			if (p.process.pid() == pid) {
+				self.on_process_complete();
+			} else {
+				p.process.signal(process.SIGCHLD, {child_pid: pid, action: process.SIGCHLD_TERM});
+			}
+		});
 
 		return self;
 	});
@@ -860,16 +919,30 @@ ao_module('terminal', ['util'], function(ao) {
 			alt   = (alt   === true);
 			shift = (shift === true);
 
-			if (code=3 && !alt && !shift) { // ^C
+			if (code==3 && !alt && !shift && window.getSelection().type != "Caret") { // ^C
 				return self.receive_ctrl_code.return_default_action;
 			}
-			if (code=22) { // ^V
+			if (code==22) { // ^V
 				return self.receive_ctrl_code.return_default_action;
+			}
+			if (code==4) {
+				p.istream.eof = true;
+				p.input_str(p.input.textContent);
+				p.input.textContent = '';
+				p.istream.eof = false;
 			}
 
 			return parent_receive_ctrl_code(code, alt, shift);
 		});
 
+		var parent_on_process_complete = self.on_process_complete;
+		self.on_process_complete = (function() {
+// TODO: add an option to restart the process.
+			parent_on_process_complete();
+			window.removeEventListener("beforeunload", onbeforeunload);
+			p.input.contentEditable = false;
+			p.ostream([p.ostream.nl, "(ctrl-w to close this window)"]);
+		});
 
 		// events
 
@@ -892,7 +965,6 @@ ao_module('terminal', ['util'], function(ao) {
 			var code = event.keyCode;
 			if (event.ctrlKey)
 				code &= 0x1f;
-//			console.log(event.keyCode, code, event);
 
 			switch (code) {
 				case 13: // enter
@@ -920,21 +992,6 @@ ao_module('terminal', ['util'], function(ao) {
 					p.input_str('\u001B[B');
 					return false;
 					break;
-/*
-				case 3: // 'c'
-					if (p.ctrl_down && p.shift_down) {
-						self.interupt();
-					}
-					break;
-				case 4: // 'd'
-					if (p.ctrl_down && p.shift_down) {
-						self.interupt();
-					}
-					break;
-				case 22: // '^V'
-					return;
-					break;
-//*/
 				default:
 					break;
 			}
@@ -1139,6 +1196,7 @@ ao_module('terminal', ['util'], function(ao) {
 	var shell = (function(argv, p) {
 		argv     = argv || {};
 		p        = p    || {};
+		p.name   = p.name || "AO Shell";
 		var self = process_simple(argv, p);
 
 		var os = argv.ostream;
@@ -1153,6 +1211,9 @@ ao_module('terminal', ['util'], function(ao) {
 		p.cmd_get = (function(identifier) {
 			return p.cmds[identifier];
 		});
+
+		// populated by the prepare_cmds state.
+		p.child_processes = [];
 
 		p.history = [];
 		p.history_p = 0;
@@ -1275,7 +1336,6 @@ ao_module('terminal', ['util'], function(ao) {
 			var machine = ao.state_machine({states:states}, {state:"setup"});
 
 			var commands = [];
-			var active_cmd = [];
 
 			states.setup = (function() {
 				self.yield = true;
@@ -1288,13 +1348,8 @@ ao_module('terminal', ['util'], function(ao) {
 			});
 
 			states.prompt_and_wait = (function() {
-				if (is.eof) {
-					self.yield = false;
-					return machine.yield("setup");
-				} else {
-					os(self.prompt());
-					return machine.yield("handle_input");
-				}
+				os(self.prompt());
+				return machine.yield("handle_input");
 			});
 
 			states.handle_input = (function() {
@@ -1333,7 +1388,7 @@ ao_module('terminal', ['util'], function(ao) {
 				var pipe_new = null;
 				var length = chain.length
 
-				active_cmd = [];
+				p.child_processes = [];
 
 				for (var i = 0 ; i < length ; ++i) {
 					var command = chain[i];
@@ -1357,7 +1412,7 @@ ao_module('terminal', ['util'], function(ao) {
 						ostream: pipe_new ? pipe_new.ostream : os,
 						argv: command.tokens
 					}));
-					active_cmd.push(process);
+					p.child_processes.push(process);
 
 					pipe_old = pipe_new;
 
@@ -1368,24 +1423,33 @@ ao_module('terminal', ['util'], function(ao) {
 
 			states.run_cmds = (function() {
 				var i = 0;
-				while (i < active_cmd.length) {
-					active_cmd[i].run(active_cmd[i].started ? proc_status.INPUT : proc_status.START);
+				while (i < p.child_processes.length) {
+					if (!p.child_processes[i].started) {
+						p.child_processes[i].run(proc_status.START);
+					} else {
+						p.child_processes[i].signal(process.SIGINPUT);
+					}
 
-					if (active_cmd[i].yield) {
+					if (p.child_processes[i].yield) {
 						++i;
 					} else {
-						if (active_cmd[i+1]) {
-							active_cmd[i+1].istream.eof = true;
+						if (p.child_processes[i+1]) {
+							p.child_processes[i+1].istream.eof = true;
 						}
-						active_cmd.splice(i, 1);
+						p.child_processes.splice(i, 1);
 					}
 				}
 
-				if (active_cmd.length == 0) {
+				if (p.child_processes.length == 0) {
 					return machine.continue("prepare_cmds");
 				} else {
 					return machine.yield();
 				}
+			});
+
+			states.done = (function() {
+				self.yield = false;
+				console.log("Run called on a completed shell process.")
 			});
 
 			return machine;
@@ -1395,17 +1459,24 @@ ao_module('terminal', ['util'], function(ao) {
 			lifecycle();
 		});
 
+		p.signal_handler[process.SIGCHLD] = (function(argv) {
+			if (argv.action = process.SIGCHLD_TERM) {
+				// stop the running process if argv.pid matches. otherwise, propogate the signal to the child processes
+			}
+		});
+
 		return self;
 	});
 
-	ao.nl             = nl;
-	ao.caret_to_end   = caret_to_end;
-	ao.proc_status    = proc_status;
-	ao.process        = process;
-	ao.process_simple = process_simple;
-	ao.process_sm     = process_sm;
-	ao.terminal_base  = terminal_base;
-	ao.terminal       = terminal;
-	ao.shell          = shell;
+	ao.nl              = nl;
+	ao.caret_to_end    = caret_to_end;
+	ao.proc_status     = proc_status;
+	ao.process_manager = process_manager();
+	ao.process         = process;
+	ao.process_simple  = process_simple;
+	ao.process_sm      = process_sm;
+	ao.terminal_base   = terminal_base;
+	ao.terminal        = terminal;
+	ao.shell           = shell;
 });
 
