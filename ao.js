@@ -840,6 +840,7 @@ ao_module('terminal', ['util'], function(ao) {
 		});
 
 		self.set_input_contents = (function(input) {}); // do nothing
+		self.get_input_contents = (function() {return "";}); // return nothing
 
 		if (!p.dont_run) {
 			p.process.run(proc_status.START);
@@ -912,6 +913,10 @@ ao_module('terminal', ['util'], function(ao) {
 			}
 			p.input.appendChild(document.createTextNode(input));
 			caret_to_end(p.input);
+		});
+
+		self.get_input_contents = (function() {
+			return p.input.textContent;
 		});
 
 		self.clear = (function() {
@@ -1481,12 +1486,12 @@ ao_module('terminal', ['util'], function(ao) {
 						p.child_processes[1].istream.eof = true;
 					}
 					p.child_processes.splice(0, 1);
-					lifecycle();
+					os([argv.term.get_input_contents()]);
+					argv.term.set_input_contents("");
 				}
-				return true;
 			}
-			// if no running children. dont handle the signal and let the parent close this shell.
-			return false;
+			lifecycle();
+			return true;
 		});
 
 		return self;
