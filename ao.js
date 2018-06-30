@@ -471,6 +471,8 @@ ao_module('terminal', ['util'], function(ao) {
 			if (!(sig & process.SIG_CANTCATCH) && p.signal_handler[sig]) caught = p.signal_handler[sig](argv);
 			if (!caught) {
 				if (sig & (process.SIG_TERMINATE | process.SIG_STOP)) {
+// TODO: implement this bit.
+// Incase I forget again, this has nothing to do with SIGINT
 					// tell the parent process/terminal to stop this process
 				//	(self.shell || self.term).
 				}
@@ -1469,11 +1471,23 @@ ao_module('terminal', ['util'], function(ao) {
 			}
 		});
 
-//		p.signal_handler[process.SIGINT] = (function() {
-//			if (argv.action = process.SIGCHLD_TERM) {
-//				// stop the running process if argv.pid matches. otherwise, propogate the signal to the child processes
-//			}
-//		});
+		p.signal_handler[process.SIGINT] = (function() {
+			// if there is a running child. send it sigint and terminate it if needed, then return true.
+			if (p.child_processes.length) {
+				var caught = p.child_processes[0].signal(process.SIGINT) == true;
+				if (!caught) {
+					// terminate process[0] by deleting it.
+					if (p.child_processes[1]) {
+						p.child_processes[1].istream.eof = true;
+					}
+					p.child_processes.splice(0, 1);
+					lifecycle();
+				}
+				return true;
+			}
+			// if no running children. dont handle the signal and let the parent close this shell.
+			return false;
+		});
 
 		return self;
 	});
