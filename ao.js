@@ -810,7 +810,11 @@ ao_module('terminal', ['util'], function(ao) {
 			shift = (shift === true);
 
 			if (code == 3) { // ^C
-				p.process.signal(process.SIGINT);
+				var caught = (p.process.signal(process.SIGINT) == true);
+				if (!caught) {
+					// end the process.
+					self.on_process_complete();
+				}
 			}
 
 			p.process.receive_ctrl_code(code, alt, shift);
@@ -1464,6 +1468,12 @@ ao_module('terminal', ['util'], function(ao) {
 				// stop the running process if argv.pid matches. otherwise, propogate the signal to the child processes
 			}
 		});
+
+//		p.signal_handler[process.SIGINT] = (function() {
+//			if (argv.action = process.SIGCHLD_TERM) {
+//				// stop the running process if argv.pid matches. otherwise, propogate the signal to the child processes
+//			}
+//		});
 
 		return self;
 	});
