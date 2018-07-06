@@ -100,15 +100,15 @@ ao_module('util', [], function(ao) {
 		MIXED: 2
 	};
 	var endianness = (function() {
-		var a = new ArrayBuffer(4);
-		var b = new Uint8Array(a);
-		var c = new Uint32Array(a);
-		b[0] = 0xa1;
-		b[1] = 0xb2;
-		b[2] = 0xc3;
-		b[3] = 0xd4;
-		if (c[0] == 0xd4c3b2a1) return endian.LITTLE;
-		if (c[0] == 0xa1b2c3d4) return endian.BIG;
+		var buffer = new ArrayBuffer(4);
+		var bytes  = new Uint8Array(buffer);
+		var word   = new Uint32Array(buffer);
+		bytes[0]   = 0xa1;
+		bytes[1]   = 0xb2;
+		bytes[2]   = 0xc3;
+		bytes[3]   = 0xd4;
+		if (word[0] == 0xd4c3b2a1) return endian.LITTLE;
+		if (word[0] == 0xa1b2c3d4) return endian.BIG;
 		return endian.MIXED;
 	})();
 
